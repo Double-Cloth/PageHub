@@ -87,8 +87,8 @@ go run ./cmd/manager
 ```bash
 bash scripts/package-release.sh source
 bash scripts/package-release.sh offline
-sha256sum -c pagehub-0.1.0-offline-amd64.tar.gz.sha256
+sha256sum -c pagehub-0.1.1-offline-amd64.tar.gz.sha256
 mkdir pagehub-install
-tar -xzf pagehub-0.1.0-offline-amd64.tar.gz -C pagehub-install
+tar -xzf pagehub-0.1.1-offline-amd64.tar.gz -C pagehub-install
 sudo bash pagehub-install/install.sh
 ```
