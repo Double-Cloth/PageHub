@@ -111,7 +111,7 @@ input[type="checkbox"] {
 }
 .snake-world {
   position: absolute;
-  inset: 0;
+  inset: 0 0 var(--dock-height, 80px);
   z-index: -2;
   background: #0a0e12;
 }
@@ -162,18 +162,6 @@ input[type="checkbox"] {
 .brand-mark span:last-child {
   background: var(--red);
 }
-.brand-divider {
-  height: 15px;
-  width: 1px;
-  background: #4a535a;
-  margin: 0 5px 0 12px;
-}
-.brand-caption {
-  font-size: 11px;
-  font-weight: 400;
-  color: #919a9f;
-  letter-spacing: 1px;
-}
 .header-caption {
   color: #6e7980;
   font-size: 10px;
@@ -194,26 +182,24 @@ input[type="checkbox"] {
   margin-bottom: 28px;
 }
 .avatar-button {
-  width: 100px;
-  height: 100px;
-  padding: 0;
+  width: 112px;
+  height: 112px;
+  padding: 5px;
   border: 1px solid #59636a;
+  border-radius: 12px;
   background: #12171b;
-  position: relative;
+  overflow: hidden;
+  box-shadow: 0 10px 28px #0005;
 }
 .avatar-button img {
   display: block;
   width: 100%;
   height: 100%;
+  border-radius: 7px;
   object-fit: cover;
 }
-.avatar-corner {
-  position: absolute;
-  height: 7px;
-  width: 7px;
-  top: -4px;
-  right: -4px;
-  background: #e2e5df;
+.avatar-button:hover {
+  border-color: #a8b0b3;
 }
 .identity-group h1 {
   font-weight: 600;
@@ -407,7 +393,7 @@ input[type="checkbox"] {
 }
 .project-universe {
   position: absolute;
-  inset: 0 0 78px;
+  inset: 0 0 var(--dock-height, 80px);
   z-index: 3;
   overflow: hidden;
   touch-action: none;
@@ -839,7 +825,7 @@ input[type="checkbox"] {
 .game-interface {
   position: absolute;
   z-index: 4;
-  inset: 0 0 80px;
+  inset: 0 0 var(--dock-height, 80px);
   pointer-events: none;
 }
 .game-hud {
@@ -851,10 +837,13 @@ input[type="checkbox"] {
   top: 30px;
   left: 50%;
   transform: translateX(-50%);
-  background: #11191f;
-  border: 1px solid #46535c;
+  background: #11191f66;
+  border: 1px solid #46535c80;
   padding: 15px 20px;
   pointer-events: auto;
+}
+.game-hud .button {
+  background: #1d252b55;
 }
 .game-hud > div {
   display: flex;
@@ -1137,9 +1126,7 @@ input[type="checkbox"] {
     height: 76px;
     padding: 0 23px;
   }
-  .header-caption,
-  .brand-caption,
-  .brand-divider {
+  .header-caption {
     display: none;
   }
   .brand {
@@ -1153,8 +1140,8 @@ input[type="checkbox"] {
     top: 46%;
   }
   .avatar-button {
-    width: 80px;
-    height: 80px;
+    width: 96px;
+    height: 96px;
   }
   .avatar-group {
     margin-bottom: 28px;
@@ -1199,9 +1186,6 @@ input[type="checkbox"] {
   .danmaku-toggle {
     gap: 9px;
     font-size: 11px;
-  }
-  .project-universe {
-    bottom: calc(71px + env(safe-area-inset-bottom));
   }
   .universe-header {
     padding: 19px 20px;
@@ -1378,9 +1362,6 @@ input[type="checkbox"] {
     padding-top: 12px;
     padding-bottom: calc(12px + env(safe-area-inset-bottom));
     min-height: 58px;
-  }
-  .project-universe {
-    bottom: calc(59px + env(safe-area-inset-bottom));
   }
   .universe-header {
     padding: 12px 24px;

@@ -6,6 +6,7 @@ import { SnakeEngine, type Direction } from "./engine";
 const props = defineProps<{ active: boolean }>();
 const emit = defineEmits<{
   change: [mode: string, score: number, speed: number];
+  layout: [];
 }>();
 const host = ref<HTMLDivElement>();
 let engine: SnakeEngine;
@@ -20,6 +21,7 @@ let cellWidth = 22;
 let cellHeight = 22;
 let observer: ResizeObserver;
 let colorPhase = 0;
+const liftedCells = new Set<string>();
 const colors = { tile: "#171d22", snake: "#2b363f" };
 
 function report() {
@@ -56,19 +58,22 @@ function resize() {
   drawGrid();
   draw();
   renderer?.render();
+  emit("layout");
 }
 function drawGrid() {
   if (!grid || !renderer) return;
   grid.clear();
   const gap = Math.max(0.7, Math.min(cellWidth, cellHeight) * 0.085);
   for (let y = 0; y < engine.rows; y++) {
-    for (let x = 0; x < engine.columns; x++)
+    for (let x = 0; x < engine.columns; x++) {
+      if (liftedCells.has(`${x},${y}`)) continue;
       grid.rect(
         x * cellWidth,
         y * cellHeight,
         cellWidth - gap,
         cellHeight - gap,
       );
+    }
   }
   grid.fill(colors.tile);
 }
@@ -173,21 +178,45 @@ function sources(count: number) {
       (point.y + 1) * cellHeight <= visibleBottom - 48,
   );
   const gap = Math.max(0.7, Math.min(cellWidth, cellHeight) * 0.085);
-  return Array.from({ length: Math.min(count, available.length) }, () => {
-    const point = available.splice(
-      Math.floor(Math.random() * available.length),
-      1,
-    )[0]!;
-    return {
-      x: rect.x + point.x * cellWidth,
-      y: rect.y + point.y * cellHeight,
-      width: cellWidth - gap,
-      height: cellHeight - gap,
-      color: colors.tile,
-    };
-  });
+  liftedCells.clear();
+  const selected = Array.from(
+    { length: Math.min(count, available.length) },
+    () => {
+      const point = available.splice(
+        Math.floor(Math.random() * available.length),
+        1,
+      )[0]!;
+      liftedCells.add(`${point.x},${point.y}`);
+      return {
+        x: rect.x + point.x * cellWidth,
+        y: rect.y + point.y * cellHeight,
+        width: cellWidth - gap,
+        height: cellHeight - gap,
+        color: colors.tile,
+      };
+    },
+  );
+  drawGrid();
+  renderer?.render();
+  return selected;
 }
-defineExpose({ start, turn, speed, pause, reset, automatic, sources });
+
+function restoreSources() {
+  liftedCells.clear();
+  drawGrid();
+  renderer?.render();
+}
+
+defineExpose({
+  start,
+  turn,
+  speed,
+  pause,
+  reset,
+  automatic,
+  sources,
+  restoreSources,
+});
 watch(
   () => props.active,
   () => {

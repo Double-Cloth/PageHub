@@ -33,6 +33,9 @@ const world = ref<InstanceType<typeof SnakeWorld>>();
 const universe = ref<InstanceType<typeof ProjectUniverse>>();
 const hero = ref<HTMLElement>();
 const flights = ref<HTMLElement>();
+const dock = ref<HTMLElement>();
+const dockHeight = ref(80);
+let dockObserver: ResizeObserver;
 const editor = ref(false);
 const audit = ref<(Job & { created_at?: string; actor?: string })[]>([]);
 const showAudit = ref(false);
@@ -261,6 +264,7 @@ function avatarClick() {
   clicks = [...clicks.filter((time) => now - time < 2000), now];
   if (clicks.length >= 5) {
     clicks = [];
+    transition?.kill();
     panel.value = "";
     mode.value = "ADMIN_AUTH_ENTRY";
   }
@@ -316,6 +320,7 @@ async function home(fromHistory = false) {
     await universe.value?.leave();
   }
   mode.value = "TRANSITION_TO_HOME";
+  world.value?.restoreSources();
   panel.value = "";
   world.value?.automatic();
   transition = gsap.timeline({
@@ -460,6 +465,11 @@ function fly(message: Message) {
   );
 }
 onMounted(() => {
+  gsap.set(hero.value!, { x: 0, y: 0, xPercent: -50, yPercent: -50 });
+  dockObserver = new ResizeObserver(() => {
+    dockHeight.value = dock.value?.getBoundingClientRect().height ?? 80;
+  });
+  dockObserver.observe(dock.value!);
   checkDesktop();
   window.addEventListener("keydown", keyboard);
   window.addEventListener("resize", checkDesktop);
@@ -482,6 +492,7 @@ onMounted(() => {
   }, 30_000);
 });
 onUnmounted(() => {
+  dockObserver?.disconnect();
   window.removeEventListener("keydown", keyboard);
   window.removeEventListener("resize", checkDesktop);
   window.removeEventListener("popstate", popstate);
@@ -499,20 +510,21 @@ onUnmounted(() => {
 <template>
   <div
     class="portal-shell"
+    :style="{ '--dock-height': `${dockHeight}px` }"
     :class="{ 'game-active': isGame, 'projects-active': inProjects }"
   >
     <SnakeWorld
       ref="world"
       :active="!inProjects && mode !== 'TRANSITION_TO_HOME'"
       @change="updateGame"
+      @layout="inProjects && (sources = world?.sources(sources.length) ?? [])"
     />
     <div ref="flights" class="danmaku-layer" aria-hidden="true"></div>
     <header class="site-header">
       <a class="brand" href="/" aria-label="PageHub 首页" @click="navigateHome"
         ><span class="brand-mark"
           ><span></span><span></span><span></span><span></span></span
-        >PageHub<span class="brand-divider"></span
-        ><span class="brand-caption">独立构建，自由探索。</span></a
+        >PageHub</a
       ><span class="header-caption mono">{{
         adminMode ? "LOCAL ADMIN" : "A SMALL CORNER OF THE INTERNET"
       }}</span>
@@ -533,11 +545,11 @@ onUnmounted(() => {
             :src="settings.profile.avatarPath"
             width="100"
             height="100"
-            alt="Double Cloth 工作室标志"
+            :alt="`${settings.profile.name} 的头像`"
             @error="
               ($event.target as HTMLImageElement).src = '/assets/avatar.png'
             "
-          /><span class="avatar-corner"></span>
+          />
         </button>
       </div>
       <div class="hero-group identity-group">
@@ -617,12 +629,13 @@ onUnmounted(() => {
       </div>
       <p class="game-help mono">方向键转向 · Shift + ↑ / ↓ 调速 · Esc 退出</p>
     </section>
-    <section
-      v-if="mode === 'ADMIN_AUTH_ENTRY'"
-      class="modal-backdrop"
-      @click.self="!adminMode && home()"
-    >
-      <div class="auth-panel">
+    <section v-if="mode === 'ADMIN_AUTH_ENTRY'" class="modal-backdrop">
+      <div
+        class="auth-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="admin-entry-title"
+      >
         <div class="panel-heading">
           <Icon name="lock" :size="24" /><button
             v-if="!adminMode"
@@ -633,7 +646,7 @@ onUnmounted(() => {
             <Icon name="close" />
           </button>
         </div>
-        <h2>管理员入口</h2>
+        <h2 id="admin-entry-title">管理员入口</h2>
         <template v-if="adminMode"
           ><p>通过本机受保护的入口连接。凭据仅保存在当前页面内存。</p>
           <form @submit.prevent="login">
@@ -807,7 +820,7 @@ onUnmounted(() => {
       @close="panel = ''"
       @message="fly"
     />
-    <footer class="bottom-dock">
+    <footer ref="dock" class="bottom-dock">
       <a
         class="github-link"
         :href="settings.profile.githubUrl"
