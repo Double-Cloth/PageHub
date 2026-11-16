@@ -535,7 +535,7 @@ onUnmounted(() => {
             height="100"
             alt="Double Cloth 工作室标志"
             @error="
-              ($event.target as HTMLImageElement).src = '/assets/avatar.svg'
+              ($event.target as HTMLImageElement).src = '/assets/avatar.png'
             "
           /><span class="avatar-corner"></span>
         </button>

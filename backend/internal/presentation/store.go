@@ -57,7 +57,7 @@ func Load(store registry.Store) (Settings, error) {
 	var settings Settings
 	data, err := os.ReadFile(store.Path("state", "portal", "ui-settings.json"))
 	if errors.Is(err, os.ErrNotExist) {
-		settings = Settings{SchemaVersion: 1, Revision: 0, Profile: Profile{Name: "Double Cloth", Signature: "Build. Explore. Create.", AvatarPath: "/assets/avatar.svg", GithubURL: "https://github.com/double-cloth-studio"}, Projects: []Project{}}
+		settings = Settings{SchemaVersion: 1, Revision: 0, Profile: Profile{Name: "Double Cloth", Signature: "Build. Explore. Create.", AvatarPath: "/assets/avatar.png", GithubURL: "https://github.com/double-cloth-studio"}, Projects: []Project{}}
 		apps, loadErr := store.Load()
 		if loadErr != nil {
 			return settings, loadErr
