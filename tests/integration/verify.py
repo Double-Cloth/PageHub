@@ -322,6 +322,10 @@ external['backup'] = {'mode': 'external'}
 external['lifecycle'] = {'allow': []}
 external_zip = package('external', external, {})
 external_plan = json.loads(runner('add-app', str(external_zip), '--dry-run'))
+if next(c for c in external_plan['preflight'] if c['name'] == 'dns')['state'] != 'ok':
+    gateway_id = subprocess.check_output(['docker', 'ps', '-q', '--filter', 'label=com.docker.compose.project=pagehub-gateway']).decode().strip()
+    # 失败时保留网关 DNS 查询结果，便于定位不同宿主机的解析差异。
+    subprocess.run(['docker', 'exec', gateway_id, 'sh', '-c', 'cat /etc/resolv.conf; nslookup -type=A pagehub-compose-demo-web; nslookup -type=A pagehub-compose-demo-web.; nslookup -type=AAAA pagehub-compose-demo-web.'], check=False)
 assert {c['name']: c['state'] for c in external_plan['preflight']} == {'network': 'ok', 'gateway_network': 'ok', 'dns': 'ok', 'port': 'ok', 'subpath': 'warning'}, external_plan
 bad_port = copy.deepcopy(external)
 bad_port['source']['upstream'] = 'http://pagehub-compose-demo-web:1'

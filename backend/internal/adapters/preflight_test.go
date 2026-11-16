@@ -27,7 +27,7 @@ esac
 `,
 		"nslookup": `#!/bin/sh
 case "$1:$2" in
--type=A:ipv4.test|-type=AAAA:ipv6.test) exit 0;;
+-type=A:ipv4.test.|-type=AAAA:ipv6.test.|-type=A:search.test) exit 0;;
 *) exit 1;;
 esac
 `,
@@ -43,6 +43,8 @@ esac
 	for _, tt := range []struct{ host, state string }{
 		{"ipv4.test", "ok"},
 		{"ipv6.test", "ok"},
+		{"ipv4.test.", "ok"},
+		{"search.test", "ok"},
 		{"missing.test", "warning"},
 	} {
 		t.Run(tt.host, func(t *testing.T) {
