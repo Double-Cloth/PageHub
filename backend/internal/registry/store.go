@@ -17,13 +17,22 @@ import (
 )
 
 type Record struct {
-	Manifest  manifests.Manifest `json:"manifest"`
-	Digest    string             `json:"digest"`
-	Directory string             `json:"directory"`
-	Project   string             `json:"project"`
-	UpdatedAt time.Time          `json:"updated_at"`
-	Previous  *Record            `json:"previous,omitempty"`
-	Adopted   bool               `json:"adopted,omitempty"`
+	Manifest      manifests.Manifest `json:"manifest"`
+	Digest        string             `json:"digest"`
+	Directory     string             `json:"directory"`
+	Project       string             `json:"project"`
+	UpdatedAt     time.Time          `json:"updated_at"`
+	Previous      *Record            `json:"previous,omitempty"`
+	Adopted       bool               `json:"adopted,omitempty"`
+	StaticRestore string             `json:"static_restore,omitempty"`
+}
+
+// ContentDirectory 返回当前静态内容目录，旧登记继续使用原版本产物。
+func (a Record) ContentDirectory() string {
+	if a.StaticRestore != "" {
+		return filepath.Join(filepath.Dir(filepath.Dir(a.Directory)), "restores", a.StaticRestore)
+	}
+	return a.Directory
 }
 
 type Registry struct {
@@ -89,6 +98,16 @@ func (s Store) Validate(a Record) error {
 	real, err := filepath.EvalSymlinks(a.Directory)
 	if err != nil || real != expected {
 		return errors.New("应用目录含软链接或不存在")
+	}
+	if a.StaticRestore != "" {
+		if a.Manifest.Kind != "static" || !regexp.MustCompile(`^restore-[0-9]+$`).MatchString(a.StaticRestore) {
+			return errors.New("静态恢复目录无效")
+		}
+		content := a.ContentDirectory()
+		real, err := filepath.EvalSymlinks(content)
+		if err != nil || real != content {
+			return errors.New("静态恢复目录含软链接或不存在")
+		}
 	}
 	b, err := os.ReadFile(filepath.Join(a.Directory, "app.yaml"))
 	if err != nil {

@@ -50,6 +50,9 @@ func (s Service) VerifyBackup(ctx context.Context, id, directory string) error {
 		if _, err = importer.Extract(ctx, filepath.Join(directory, "bundle.zip"), stage); err != nil {
 			return err
 		}
+		if err = s.Adapter.Validate(ctx, registry.Record{Manifest: a.Manifest, Directory: stage}); err != nil {
+			return err
+		}
 	} else {
 		if a.Manifest.Backup.Mode != "volume" {
 			return errors.New("该应用须使用外部恢复工具")
@@ -173,23 +176,7 @@ func (s Service) Restore(ctx context.Context, id, directory string, dry bool) (e
 		err = errors.Join(err, registry.WriteJSON(s.Store.Path("state", "restores", fmt.Sprintf("%d.json", time.Now().UnixNano())), map[string]any{"id": id, "backup": directory, "safety_backup": safety, "state": state, "at": time.Now().UTC()}, 0600))
 	}()
 	if a.Manifest.Kind == "static" {
-		stage, err := os.MkdirTemp(filepath.Dir(a.Directory), "restore-")
-		if err != nil {
-			return err
-		}
-		defer os.RemoveAll(stage)
-		if _, err = importer.Extract(ctx, filepath.Join(directory, "bundle.zip"), stage); err != nil {
-			return err
-		}
-		target := filepath.Join(a.Directory, a.Manifest.Source.StaticDir)
-		previous := target + fmt.Sprintf(".before-restore-%d", time.Now().UnixNano())
-		if err = os.Rename(target, previous); err != nil {
-			return err
-		}
-		if err = os.Rename(filepath.Join(stage, a.Manifest.Source.StaticDir), target); err != nil {
-			return errors.Join(err, os.Rename(previous, target))
-		}
-		return nil
+		return s.restoreStatic(ctx, a, directory)
 	}
 	// 正式恢复要求应用已停止，避免数据库与卷写入发生竞争。
 	out, err := s.Adapter.Docker.Compose(ctx, a, "ps", "--status", "running", "--quiet")
@@ -230,4 +217,68 @@ func (s Service) Restore(ctx context.Context, id, directory string, dry bool) (e
 		}
 	}
 	return nil
+}
+
+func (s Service) restoreStatic(ctx context.Context, a registry.Record, directory string) (err error) {
+	parent := s.Store.Path("apps", a.Manifest.ID, "restores")
+	if err = os.MkdirAll(parent, 0755); err != nil {
+		return err
+	}
+	stage, err := os.MkdirTemp(parent, "restore-")
+	if err != nil {
+		return err
+	}
+	// 失败目录保留用于诊断，避免网关回退失败时删除仍可能在使用的文件。
+	if err = os.Chmod(stage, 0755); err != nil {
+		return err
+	}
+	if _, err = importer.Extract(ctx, filepath.Join(directory, "bundle.zip"), stage); err != nil {
+		return err
+	}
+	next := a
+	next.StaticRestore = filepath.Base(stage)
+	next.UpdatedAt = time.Now().UTC()
+	if err = s.Adapter.Validate(ctx, registry.Record{Manifest: a.Manifest, Directory: stage}); err != nil {
+		return err
+	}
+	if err = s.Store.Validate(next); err != nil {
+		return err
+	}
+	unlock, err := registry.Lock(s.Store.Path("state", "routes.lock"))
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	r, err := s.Store.Load()
+	if err != nil {
+		return err
+	}
+	old := registry.Registry{SchemaVersion: r.SchemaVersion, Apps: append([]registry.Record{}, r.Apps...)}
+	found := false
+	for index, entry := range r.Apps {
+		if entry.Manifest.ID == a.Manifest.ID {
+			if registry.Fingerprint(entry) != registry.Fingerprint(a) {
+				return errors.New("恢复过程中登记版本发生变化")
+			}
+			r.Apps[index] = next
+			found = true
+		}
+	}
+	if !found {
+		return errors.New("恢复目标已被移除")
+	}
+	if err = s.Gateway.Validate(ctx, r); err != nil {
+		return err
+	}
+	defer func() {
+		if err != nil {
+			recoveryCtx, cancel := context.WithTimeout(context.Background(), time.Minute)
+			defer cancel()
+			err = errors.Join(err, s.Gateway.Commit(recoveryCtx, old), s.Store.Save(old))
+		}
+	}()
+	if err = s.Gateway.Commit(ctx, r); err != nil {
+		return err
+	}
+	return s.Store.Save(r)
 }

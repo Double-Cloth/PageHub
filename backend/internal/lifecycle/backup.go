@@ -38,6 +38,13 @@ func (s Service) Backup(ctx context.Context, id string) (destination string, err
 		return "", err
 	}
 	defer u()
+	a, err = s.Store.Get(id)
+	if err != nil {
+		return "", err
+	}
+	if err = s.Store.Validate(a); err != nil {
+		return "", err
+	}
 	return s.backupLocked(ctx, a)
 }
 
@@ -53,7 +60,7 @@ func (s Service) backupLocked(ctx context.Context, a registry.Record) (destinati
 			return "", err
 		}
 		writer := zip.NewWriter(file)
-		err = filepath.WalkDir(a.Directory, func(path string, entry os.DirEntry, walkErr error) error {
+		err = filepath.WalkDir(a.ContentDirectory(), func(path string, entry os.DirEntry, walkErr error) error {
 			if walkErr != nil {
 				return walkErr
 			}
@@ -63,7 +70,7 @@ func (s Service) backupLocked(ctx context.Context, a registry.Record) (destinati
 			if !entry.Type().IsRegular() {
 				return errors.New("备份目录含特殊文件")
 			}
-			rel, err := filepath.Rel(a.Directory, path)
+			rel, err := filepath.Rel(a.ContentDirectory(), path)
 			if err != nil {
 				return err
 			}

@@ -122,6 +122,36 @@ runner('update', 'static-demo', str(new_zip), '--approved-sha256', hashlib.sha25
 assert b'version-two' in request('/static-demo/')
 runner('rollback', 'static-demo')
 assert b'PageHub' in request('/static-demo/')
+
+# 静态恢复独立于 Release，并让后续备份包含当前恢复内容。
+static_record = next(app for app in json.loads((root / 'config/apps.yaml').read_text())['apps'] if app['manifest']['id'] == 'static-demo')
+release = pathlib.Path(static_record['directory'])
+release_files = {str(p.relative_to(release)): p.read_bytes() for p in release.rglob('*') if p.is_file()}
+static_backup = pathlib.Path(runner('backup', 'static-demo').strip())
+with zipfile.ZipFile(static_backup / 'bundle.zip', 'w') as archive:
+    archive.writestr('app.yaml', original)
+    archive.writestr('dist/index.html', '<h1>restored-static-content</h1>')
+static_receipt = json.loads((static_backup / 'receipt.json').read_text())
+static_receipt['files']['bundle.zip'] = hashlib.sha256((static_backup / 'bundle.zip').read_bytes()).hexdigest()
+(static_backup / 'receipt.json').write_text(json.dumps(static_receipt))
+runner('restore', 'static-demo', str(static_backup), '--dry-run')
+assert b'PageHub' in request('/static-demo/')
+runner('restore', 'static-demo', str(static_backup))
+assert b'restored-static-content' in request('/static-demo/')
+restored_record = next(app for app in json.loads((root / 'config/apps.yaml').read_text())['apps'] if app['manifest']['id'] == 'static-demo')
+assert restored_record['digest'] == static_record['digest']
+assert restored_record['directory'] == static_record['directory']
+assert restored_record['static_restore'].startswith('restore-')
+assert {str(p.relative_to(release)): p.read_bytes() for p in release.rglob('*') if p.is_file()} == release_files
+restored_backup = pathlib.Path(runner('backup', 'static-demo').strip())
+with zipfile.ZipFile(restored_backup / 'bundle.zip') as archive:
+    assert b'restored-static-content' in archive.read('dist/index.html')
+runner('gateway', 'reload')
+assert b'restored-static-content' in request('/static-demo/')
+runner('rollback', 'static-demo')
+assert b'version-two' in request('/static-demo/')
+runner('rollback', 'static-demo')
+assert b'restored-static-content' in request('/static-demo/')
 private_zip = pathlib.Path('/tmp/pagehub-packages/private.zip')
 with zipfile.ZipFile(private_zip, 'w') as archive:
     archive.writestr('app.yaml', original.replace('static-demo', 'private-demo').replace('visibility: public', 'visibility: private'))
@@ -291,6 +321,13 @@ external['source'] = {'upstream': 'http://pagehub-compose-demo-web:3000'}
 external['backup'] = {'mode': 'external'}
 external['lifecycle'] = {'allow': []}
 external_zip = package('external', external, {})
+external_plan = json.loads(runner('add-app', str(external_zip), '--dry-run'))
+assert {c['name']: c['state'] for c in external_plan['preflight']} == {'network': 'ok', 'gateway_network': 'ok', 'dns': 'ok', 'port': 'ok', 'subpath': 'warning'}, external_plan
+bad_port = copy.deepcopy(external)
+bad_port['source']['upstream'] = 'http://pagehub-compose-demo-web:1'
+bad_port_plan = json.loads(runner('add-app', str(package('bad-port', bad_port, {})), '--dry-run'))
+assert next(c for c in bad_port_plan['preflight'] if c['name'] == 'port')['state'] == 'warning'
+assert next(c for c in bad_port_plan['preflight'] if c['name'] == 'subpath')['state'] == 'warning'
 approve('add-app', external_zip)
 assert request('/external-demo/api/value') == b'persistent-test-value'
 runner('remove-app', 'external-demo')
@@ -301,6 +338,50 @@ review = json.loads(runner('compose-review', '/tmp', 'legacy-compose.json', 'pag
 external.update(id='external-compose-demo', path='/external-compose-demo/', kind='external-compose')
 external['source'].update(compose_directory='/tmp', compose_file='legacy-compose.json', project='pagehub-test-legacy', **review)
 external_compose_zip = package('external-compose', external, {})
+external_plan = json.loads(runner('add-app', str(external_compose_zip), '--dry-run'))
+assert next(c for c in external_plan['preflight'] if c['name'] == 'containers')['state'] == 'ok'
 approve('add-app', external_compose_zip)
+external_state = lambda: next(a['state'] for a in json.loads(runner('status')) if a['id'] == 'external-compose-demo')
+assert external_state() == 'healthy'
+legacy_ids = subprocess.check_output(['docker', 'ps', '-q', '--filter', 'label=com.docker.compose.project=pagehub-test-legacy']).decode().split()
+subprocess.run(['docker', 'stop', *legacy_ids], check=True, capture_output=True)
+# 此时 upstream 指向的另一项目仍健康，容器停止状态必须优先生效。
+assert request('/external-compose-demo/api/value') == b'persistent-test-value'
+assert external_state() == 'stopped'
+subprocess.run(['docker', 'start', *legacy_ids], check=True, capture_output=True)
+wait_healthy('external-compose-demo')
 runner('remove-app', 'external-compose-demo')
 assert request('/adopt-demo/api/value') == b'adopted-persistent-value'
+
+
+# Docker 健康失败必须覆盖仍然正常响应的 HTTP 服务。
+health_config = pathlib.Path('/tmp/external-health.json')
+health_config.write_text(json.dumps({
+    'services': {'web': {
+        'image': image_record['manifest']['source']['image'],
+        'healthcheck': {'test': ['CMD', 'false'], 'interval': '1s', 'timeout': '1s', 'retries': 1},
+        'networks': {'ingress': {'aliases': ['pagehub-external-health']}},
+    }},
+    'networks': {'ingress': {'external': True, 'name': 'pagehub-ingress'}},
+}))
+health_command = ['docker', 'compose', '-p', 'pagehub-test-external-health', '-f', str(health_config)]
+subprocess.run(health_command + ['up', '-d', '--pull', 'never'], check=True, capture_output=True)
+try:
+    review = json.loads(runner('compose-review', '/tmp', health_config.name, 'pagehub-test-external-health'))
+    unhealthy_external = copy.deepcopy(external)
+    unhealthy_external.update(id='external-health', path='/external-health/')
+    unhealthy_external['source'] = {'upstream': 'http://pagehub-external-health:80', 'compose_directory': '/tmp', 'compose_file': health_config.name, 'project': 'pagehub-test-external-health', **review}
+    unhealthy_external['health']['path'] = '/'
+    health_zip = package('external-health', unhealthy_external, {})
+    approve('add-app', health_zip)
+    for _ in range(20):
+        state = next(a['state'] for a in json.loads(runner('status')) if a['id'] == 'external-health')
+        if state == 'unhealthy':
+            break
+        time.sleep(1)
+    assert state == 'unhealthy', state
+    request('/external-health/')
+finally:
+    runner('remove-app', 'external-health')
+    subprocess.run(health_command + ['down', '-v'], check=True, capture_output=True)
+print('PASS 静态恢复隔离与回滚 / 外部接入预检 / external-compose 停止与健康失败状态')

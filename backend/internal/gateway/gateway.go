@@ -57,7 +57,11 @@ func Render(r registry.Registry) string {
 		if m.Visibility == "private" {
 			s.WriteString(" respond \"Private application\" 403\n")
 		} else if m.Kind == "static" {
-			fmt.Fprintf(&s, " root * /apps/%s/releases/%s/%s\n", m.ID, a.Digest, m.Source.StaticDir)
+			if a.StaticRestore != "" {
+				fmt.Fprintf(&s, " root * /apps/%s/restores/%s/%s\n", m.ID, a.StaticRestore, m.Source.StaticDir)
+			} else {
+				fmt.Fprintf(&s, " root * /apps/%s/releases/%s/%s\n", m.ID, a.Digest, m.Source.StaticDir)
+			}
 			if m.Source.Fallback != "" {
 				fmt.Fprintf(&s, " try_files {path} /%s\n", m.Source.Fallback)
 			}

@@ -32,10 +32,11 @@ type Options struct {
 	ExpectedID         string
 }
 type Plan struct {
-	Manifest manifests.Manifest `json:"manifest"`
-	SHA256   string             `json:"sha256"`
-	Project  string             `json:"project"`
-	Effects  []string           `json:"effects"`
+	Preflight []adapters.PreflightCheck `json:"preflight,omitempty"`
+	Manifest  manifests.Manifest        `json:"manifest"`
+	SHA256    string                    `json:"sha256"`
+	Project   string                    `json:"project"`
+	Effects   []string                  `json:"effects"`
 }
 
 func (i Importer) Import(ctx context.Context, archive string, opts Options) (plan Plan, err error) {
@@ -139,6 +140,10 @@ func (i Importer) Import(ctx context.Context, archive string, opts Options) (pla
 		}
 	}
 	a := registry.Record{Manifest: m, Digest: digest, Directory: content, Project: plan.Project, UpdatedAt: time.Now().UTC()}
+	if m.Kind == "external" || m.Kind == "external-compose" {
+		plan.Effects = []string{"登记应用目录与网关路由", "生命周期操作仅作用于已有容器，备份使用原部署工具"}
+		plan.Preflight = i.Adapter.PreflightExternal(ctx, a)
+	}
 	a.Adopted = opts.AdoptProject != "" || (old != nil && old.Adopted)
 	if opts.DryRun {
 		// 仅在系统临时目录生成解析产物，正式目录、容器、路由均不变。

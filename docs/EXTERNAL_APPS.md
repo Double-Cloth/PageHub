@@ -37,3 +37,13 @@ approvals 按服务和字段逐项填写解析后的精确值。例如 web.ports
 外部模式的更新与备份使用原部署工具。修改接入描述时先移除登记，再导入重新审批的描述包。
 
 运行 `sudo bash pagehub.sh compose-review /srv/existing compose.yaml existing` 可生成 config_sha256 与逐字段 approvals 候选值。应逐项检查后复制至描述包，该命令的输出可能含敏感配置。
+
+## 接入预检
+
+`add-app <描述包> --dry-run` 和正式导入都会在计划的 `preflight` 中输出检查结果。`ok` 表示对应检查通过，`warning` 附带原因和处理建议。预检覆盖已有 Compose 容器、`pagehub-ingress` 网络、网关容器内的服务 DNS 解析、上游 TCP 端口，以及入口页面响应、重定向和根路径资源引用。
+
+请根据提示用原部署工具创建容器，在 Compose 中为 Web 服务声明外部网络 `pagehub-ingress` 和唯一 DNS 别名，并将 upstream 指向容器内部监听端口。缺少运行中的网关时，DNS、端口和子路径检查会提示重新预检。检查结果用于接入审核，告警会随计划展示。
+
+子路径预检按 `route_mode` 请求实际入口路径，`strip_prefix` 请求上游 `/`，`preserve_prefix` 请求应用前缀。应用的资源 base URL、登录跳转、动态资源和 WebSocket 仍需通过浏览器验收。
+
+`external-compose` 状态先查询原工程的全部容器。没有容器或存在停止容器时为 `stopped`，Docker 健康检查失败为 `unhealthy`，启动或重启中为 `starting`。全部容器运行且 Docker 健康检查通过后，继续执行经网关的 HTTP 健康检查。Docker 查询失败时返回 `unknown`。

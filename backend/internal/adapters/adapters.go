@@ -292,11 +292,11 @@ func (b Builtin) Stop(ctx context.Context, a registry.Record) error {
 
 func (b Builtin) Inspect(ctx context.Context, a registry.Record) Status {
 	status := Status{ID: a.Manifest.ID, State: "unknown"}
-	if a.Manifest.Kind == "external" || a.Manifest.Kind == "external-compose" {
+	if a.Manifest.Kind == "external" {
 		return b.Probe(ctx, a)
 	}
 	if a.Manifest.Kind == "static" {
-		st, err := os.Stat(filepath.Join(a.Directory, a.Manifest.Source.StaticDir))
+		st, err := os.Stat(filepath.Join(a.ContentDirectory(), a.Manifest.Source.StaticDir))
 		if err != nil || !st.IsDir() {
 			status.State = "error"
 		} else {
@@ -304,7 +304,13 @@ func (b Builtin) Inspect(ctx context.Context, a registry.Record) Status {
 		}
 		return status
 	}
-	out, err := b.Docker.Compose(ctx, a, "ps", "--all", "--format", "json")
+	var out []byte
+	var err error
+	if a.Manifest.Kind == "external-compose" {
+		out, err = b.Docker.Run(ctx, a.Manifest.Source.ComposeDirectory, append(b.externalArgs(a), "ps", "--all", "--format", "json")...)
+	} else {
+		out, err = b.Docker.Compose(ctx, a, "ps", "--all", "--format", "json")
+	}
 	if err != nil {
 		status.Message = "Docker 查询失败"
 		return status
@@ -317,28 +323,8 @@ func (b Builtin) Inspect(ctx context.Context, a registry.Record) Status {
 		status.State = "stopped"
 		return status
 	}
-	running := false
-	for _, item := range items {
-		state, _ := item["State"].(string)
-		if state == "restarting" {
-			status.State = "starting"
-			return status
-		}
-		if state != "running" {
-			status.State = "stopped"
-			return status
-		}
-		if item["Health"] == "unhealthy" {
-			status.State = "unhealthy"
-			return status
-		}
-		if item["Health"] == "starting" {
-			status.State = "starting"
-			return status
-		}
-		running = true
-	}
-	if running {
+	status = containerStatus(a.Manifest.ID, items)
+	if status.State == "running" {
 		probed := b.Probe(ctx, a)
 		probed.Running = true
 		return probed
@@ -375,4 +361,36 @@ func (b Builtin) Probe(ctx context.Context, a registry.Record) Status {
 		s.State = "healthy"
 	}
 	return s
+}
+
+// containerStatus 汇总所有容器，停止优先于健康失败和启动中，避免依赖输出顺序。
+func containerStatus(id string, items []map[string]any) Status {
+	status := Status{ID: id, State: "stopped"}
+	priority := 0
+	for _, item := range items {
+		state, ok := item["State"].(string)
+		if !ok || state == "" {
+			return Status{ID: id, State: "unknown", Message: "Docker 返回的容器状态无效"}
+		}
+		current, rank := "running", 0
+		switch state {
+		case "running":
+			status.Running = true
+			switch item["Health"] {
+			case "unhealthy":
+				current, rank = "unhealthy", 2
+			case "starting":
+				current, rank = "starting", 1
+			}
+		case "restarting":
+			status.Running = true
+			current, rank = "starting", 1
+		default:
+			current, rank = "stopped", 3
+		}
+		if rank >= priority {
+			status.State, priority = current, rank
+		}
+	}
+	return status
 }
