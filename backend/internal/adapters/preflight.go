@@ -74,11 +74,12 @@ func (b Builtin) PreflightExternal(ctx context.Context, a registry.Record) []Pre
 			port = "443"
 		}
 	}
+	// 分别查询 IPv4 和 IPv6，避免单栈服务因另一类记录不存在而被误报。
 	if host == "localhost" || (net.ParseIP(host) != nil && net.ParseIP(host).IsLoopback()) {
 		add("dns", "warning", "upstream 使用回环地址，会指向网关容器自身；请使用服务 DNS 或网关可达的宿主机地址")
 	} else if net.ParseIP(host) != nil {
 		add("dns", "ok", "upstream 使用 IP 地址，无需服务 DNS 解析")
-	} else if _, err := b.Docker.Run(ctx, "", "exec", ids[0], "nslookup", host); err != nil {
+	} else if _, err := b.Docker.Run(ctx, "", "exec", ids[0], "sh", "-c", `nslookup -type=A "$1" || nslookup -type=AAAA "$1"`, "preflight", host); err != nil {
 		add("dns", "warning", "网关无法解析 "+host+"，请检查服务是否连接 pagehub-ingress、DNS 别名及名称冲突")
 	} else {
 		add("dns", "ok", "网关可解析 "+host)
