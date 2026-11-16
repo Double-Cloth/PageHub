@@ -138,6 +138,13 @@ for name, digest in receipt['files'].items():
     assert hashlib.sha256((backup_dir / name).read_bytes()).hexdigest() == digest
 wait_healthy('compose-demo')
 assert request('/compose-demo/api/value') == b'persistent-test-value'
+runner('backup', 'verify', 'compose-demo', str(backup_dir))
+runner('restore', 'compose-demo', str(backup_dir), '--dry-run')
+runner('app', 'stop', 'compose-demo')
+runner('restore', 'compose-demo', str(backup_dir))
+runner('app', 'start', 'compose-demo')
+assert json.loads((backup_dir / 'verification.json').read_text())['restore_verified']
+
 runner('backup', 'image-demo', ok=False)
 
 

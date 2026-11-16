@@ -6,7 +6,7 @@ require_install
 command="${1:-status}"
 [[ $# == 0 ]] || shift
 case "$command" in
-  status|app|doctor|backup|restore|rollback|remove-app|gateway) runner "$command" "$@" ;;
+  status|compose-review|app|doctor|backup|restore|rollback|remove-app|gateway) runner "$command" "$@" ;;
   add-app|update|adopt-app)
     [[ $# -gt 0 ]] || die '需要应用包路径，update 还需应用 ID'
     dry=false; approved=false

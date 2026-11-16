@@ -35,3 +35,5 @@ PageHub 对原工程执行 start/stop，restart 先停止再启动已有容器�
 approvals 按服务和字段逐项填写解析后的精确值。例如 web.ports、web.profiles、web.entrypoint、web.volumes、web.cap_add、web.devices、web.privileged。所有挂载以及标准白名单以外字段都必须明确批准。完整摘要同时绑定顶层卷、网络和全部服务配置。审批可能包含敏感路径与配置，应妥善保管。
 
 外部模式的更新与备份使用原部署工具。修改接入描述时先移除登记，再导入重新审批的描述包。
+
+运行 `sudo bash pagehub.sh compose-review /srv/existing compose.yaml existing` 可生成 config_sha256 与逐字段 approvals 候选值。应逐项检查后复制至描述包，该命令的输出可能含敏感配置。

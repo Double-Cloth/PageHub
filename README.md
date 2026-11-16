@@ -1,4 +1,5 @@
 # PageHub
+
 ## 部署
 
 ```bash
@@ -30,6 +31,7 @@ sudo bash /srv/pagehub/current/pagehub.sh logs my-app
 ## 导入应用
 
 ```bash
+sudo bash pagehub.sh compose-review /srv/existing compose.yaml existing
 sudo bash pagehub.sh add-app /srv/uploads/my-app.zip --dry-run
 sudo bash pagehub.sh add-app /srv/uploads/my-app.zip
 ```
@@ -44,7 +46,9 @@ sudo bash pagehub.sh add-app /srv/uploads/my-app.zip --approved-sha256 <审核�
 sudo bash pagehub.sh backup my-app
 sudo bash pagehub.sh backup verify my-app /srv/pagehub/backups/my-app/<timestamp>
 sudo bash pagehub.sh restore my-app /srv/pagehub/backups/my-app/<timestamp> --dry-run
+sudo bash pagehub.sh app stop my-app
 sudo bash pagehub.sh restore my-app /srv/pagehub/backups/my-app/<timestamp>
+sudo bash pagehub.sh app start my-app
 sudo bash pagehub.sh update my-app /srv/uploads/my-app-v2.zip
 sudo bash pagehub.sh rollback static-demo
 sudo bash pagehub.sh remove-app my-app
@@ -71,14 +75,12 @@ go vet ./...
 go run ./cmd/manager
 ```
 
-## 发布与验收范围
+## 发布打包
 
 ```bash
 bash scripts/package-release.sh source
 bash scripts/package-release.sh offline
 ```
-
-## 文档
 
 ## 离线打包
 

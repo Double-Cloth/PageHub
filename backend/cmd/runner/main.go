@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -67,6 +69,32 @@ func run() error {
 		}
 		server := &http.Server{Handler: control.RunnerHandler(service), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 200 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 16384}
 		return server.Serve(listener)
+	case "compose-review":
+		if len(args) != 4 || !filepath.IsAbs(args[1]) {
+			return errors.New("用法: compose-review <绝对目录> <compose文件> <项目名>")
+		}
+		out, err := d.Run(ctx, args[1], "compose", "--project-directory", args[1], "--project-name", args[3], "-f", filepath.Join(args[1], args[2]), "config", "--format", "json")
+		if err != nil {
+			return err
+		}
+		var config map[string]any
+		if err = json.Unmarshal(out, &config); err != nil {
+			return err
+		}
+		canonical, err := json.Marshal(config)
+		if err != nil {
+			return err
+		}
+		sum := sha256.Sum256(canonical)
+		approvals := map[string]any{}
+		services, _ := config["services"].(map[string]any)
+		for name, value := range services {
+			service, _ := value.(map[string]any)
+			for key, value := range service {
+				approvals[name+"."+key] = value
+			}
+		}
+		return json.NewEncoder(os.Stdout).Encode(map[string]any{"config_sha256": hex.EncodeToString(sum[:]), "approvals": approvals})
 	case "status":
 		r, err := store.Load()
 		if err != nil {
