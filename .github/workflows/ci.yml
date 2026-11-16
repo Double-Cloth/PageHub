@@ -26,6 +26,7 @@ jobs:
           cd backend
           CGO_ENABLED=0 go build -o ../bin/pagehub-runner ./cmd/runner
           CGO_ENABLED=0 go build -o ../bin/pagehub-manager ./cmd/manager
+          CGO_ENABLED=0 go build -o ../bin/pagehub-social ./cmd/social
       - run: |
           bash scripts/package-release.sh source
           mkdir -p /tmp/pagehub-release
@@ -37,4 +38,4 @@ jobs:
           docker build -t pagehub-test-tools -f tests/integration/Dockerfile .
           docker volume create pagehub-test-runtime
           root=$(docker volume inspect pagehub-test-runtime --format '{{.Mountpoint}}')
-          docker run --rm --network host -e PAGEHUB_ROOT="$root" -e PAGEHUB_GATEWAY_PORT=18080 -v /var/run/docker.sock:/var/run/docker.sock -v "$root:$root" -v /run/pagehub-public:/run/pagehub-public -v /tmp/pagehub-release:/workspace:ro pagehub-test-tools /workspace/tests/integration/run.sh
+          docker run --rm --network host -e PAGEHUB_ROOT="$root" -e PAGEHUB_GATEWAY_PORT=18080 -v /var/run/docker.sock:/var/run/docker.sock -v "$root:$root" -v /run/pagehub-public:/run/pagehub-public -v /run/pagehub-social:/run/pagehub-social -v /tmp/pagehub-release:/workspace:ro pagehub-test-tools /workspace/tests/integration/run.sh

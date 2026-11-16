@@ -41,6 +41,7 @@ jobs:
           cd backend
           CGO_ENABLED=0 go build -trimpath -o ../bin/pagehub-runner ./cmd/runner
           CGO_ENABLED=0 go build -trimpath -o ../bin/pagehub-manager ./cmd/manager
+          CGO_ENABLED=0 go build -trimpath -o ../bin/pagehub-social ./cmd/social
       - run: |
           export PAGEHUB_ROOT=/tmp/pagehub-release
           mkdir -p "$PAGEHUB_ROOT/config"

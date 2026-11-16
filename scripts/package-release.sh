@@ -11,7 +11,7 @@ trap 'rm -rf -- "$stage"' EXIT
 tar -C "$PAGEHUB_SOURCE" --exclude=./.git --exclude=./tmp --exclude=./dist --exclude=./frontend/dist --exclude=./frontend/node_modules --exclude=./bin -cf - . | tar -C "$stage" -xf -
 if [[ "$mode" == offline ]]; then
   if [[ -f "$PAGEHUB_ROOT/current/runtime.env" ]]; then source "$PAGEHUB_ROOT/current/runtime.env"; fi
-  [[ -x "$PAGEHUB_SOURCE/bin/pagehub-runner" && -f "$PAGEHUB_SOURCE/frontend/dist/index.html" ]] || die '先执行 scripts/build.sh 生成当前架构产物'
+  [[ -x "$PAGEHUB_SOURCE/bin/pagehub-runner" && -x "$PAGEHUB_SOURCE/bin/pagehub-manager" && -x "$PAGEHUB_SOURCE/bin/pagehub-social" && -f "$PAGEHUB_SOURCE/frontend/dist/index.html" ]] || die '先执行 scripts/build.sh 生成当前架构产物'
   mkdir -p "$stage/bin" "$stage/frontend/dist" "$stage/images"
   cp -a "$PAGEHUB_SOURCE/bin/." "$stage/bin/"
   cp -a "$PAGEHUB_SOURCE/frontend/dist/." "$stage/frontend/dist/"

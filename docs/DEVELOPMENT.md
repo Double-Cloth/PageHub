@@ -1,6 +1,6 @@
 # 开发
 
-前端使用 Vue 3、TypeScript、Vite。主页目录与管理员操作共用数据模型，临时视觉集中在 `src/ui/styles.css`。公开页面无管理登录入口，管理页面通过 SSH 端口转发访问 `/admin/`。
+前端使用 Vue 3、TypeScript、Vite。主页目录与管理员操作共用数据模型，样式集中在 `src/ui/styles.css`。公开页面头像连击可发现 SSH 管理说明，实际管理页面通过 SSH 端口转发访问 `/admin/`。完整 UI 说明见 `docs/UI_IMPLEMENTATION.md`。
 
 后端使用 Go 1.25+ 和 yaml.v3。任务与审计采用原子 JSON 文件持久化，注册表为兼容 YAML 的 JSON。Linux 使用 flock 跨进程互斥，Windows 可执行解析与权限单元测试，运维动作限定 Linux。
 
@@ -21,7 +21,7 @@ root=$(docker volume inspect pagehub-test-runtime --format '{{.Mountpoint}}')
 docker run --rm --network host \
   -e PAGEHUB_ROOT="$root" -e PAGEHUB_GATEWAY_PORT=18080 \
   -v /var/run/docker.sock:/var/run/docker.sock \
-  -v "$root:$root" -v /run/pagehub-public:/run/pagehub-public \
+  -v "$root:$root" -v /run/pagehub-public:/run/pagehub-public -v /run/pagehub-social:/run/pagehub-social \
   -v "$PWD:/workspace:ro" \
   pagehub-test-tools /workspace/tests/integration/run.sh
 ```
@@ -32,4 +32,4 @@ docker run --rm --network host \
 
 ## 独立 UI 开发
 
-运行 `npm --prefix frontend run dev:ui` 启动本地演示接口和 UI，无需 Docker 或后端。管理页面 /admin/ 接受任意非空演示 Token，状态保存在当前 Vite 进程中。默认仅监听 127.0.0.1。端口被占用时追加 `-- --port 15173`。生产构建不加载演示中间件。真实后端联调使用原 dev 命令。
+运行 `npm --prefix frontend run dev:ui` 启动本地演示接口和 UI，无需 Docker 或后端。管理页面 /admin/ 接受任意非空演示密码或 Token，状态保存在当前 Vite 进程中。默认仅监听 127.0.0.1。端口被占用时追加 `-- --port 15173`。生产构建不加载演示中间件。真实后端联调使用原 dev 命令。

@@ -16,6 +16,9 @@ export interface AppEntry {
   startup: "always" | "manual";
   state: AppState;
   actions: Action[] | null;
+  offlineReady?: boolean;
+  keywords?: string[];
+  iconPath?: string;
 }
 export interface Job {
   id: string;

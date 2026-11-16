@@ -1,8 +1,8 @@
 [Unit]
 Description=PageHub platform recovery
 Requires=docker.service
-After=docker.service network-online.target pagehub-runner.service pagehub-manager.service
-Wants=network-online.target pagehub-runner.service pagehub-manager.service
+After=docker.service network-online.target pagehub-runner.service pagehub-manager.service pagehub-social.service
+Wants=network-online.target pagehub-runner.service pagehub-manager.service pagehub-social.service
 
 [Service]
 Type=oneshot

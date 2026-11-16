@@ -1,0 +1,196 @@
+export type Cell = { x: number; y: number };
+export type Direction = "up" | "down" | "left" | "right";
+export type GameMode = "auto" | "manual" | "paused" | "dead" | "won";
+const vectors: Record<Direction, Cell> = {
+  up: { x: 0, y: -1 },
+  down: { x: 0, y: 1 },
+  left: { x: -1, y: 0 },
+  right: { x: 1, y: 0 },
+};
+export const same = (a: Cell, b: Cell) => a.x === b.x && a.y === b.y;
+
+// 偶数列棋盘的闭合回路，预留最上行作为返回通道。
+export function hamiltonian(columns: number, rows: number): Cell[] {
+  const route: Cell[] = [{ x: 0, y: 0 }];
+  for (let x = 0; x < columns; x++) {
+    for (let y = 1; y < rows; y++) route.push({ x, y: x % 2 ? rows - y : y });
+  }
+  for (let x = columns - 1; x > 0; x--) route.push({ x, y: 0 });
+  return route;
+}
+
+export class SnakeEngine {
+  cells: Cell[] = [];
+  food: Cell | null = null;
+  mode: GameMode = "auto";
+  direction: Direction = "down";
+  score = 0;
+  speed = 8;
+  colorPhase = 0;
+  recycling = false;
+  private turned = false;
+  private steps = 0;
+  readonly route: Cell[];
+  readonly indices: Map<string, number>;
+
+  constructor(
+    public columns: number,
+    public rows: number,
+    private random = Math.random,
+  ) {
+    this.columns = Math.max(4, columns - (columns % 2));
+    this.rows = Math.max(4, rows);
+    this.route = hamiltonian(this.columns, this.rows);
+    this.indices = new Map(
+      this.route.map((cell, index) => [`${cell.x},${cell.y}`, index]),
+    );
+    this.reset();
+  }
+
+  get initialLength() {
+    return Math.min(36, Math.max(5, Math.floor(this.route.length * 0.025)));
+  }
+  get maxGrowthLength() {
+    return Math.max(
+      this.initialLength,
+      Math.min(320, Math.floor(this.route.length * 0.35)),
+    );
+  }
+
+  reset(mode: GameMode = "auto") {
+    const head = Math.floor(this.route.length * 0.38);
+    this.cells = Array.from({ length: this.initialLength }, (_, i) => ({
+      ...this.route[(head - i + this.route.length) % this.route.length]!,
+    }));
+    this.mode = mode;
+    this.score = 0;
+    this.speed = 8;
+    this.recycling = false;
+    this.turned = false;
+    this.setDirection(this.route[(head + 1) % this.route.length]!);
+    this.placeFood();
+  }
+
+  manual(direction: Direction) {
+    this.mode = "manual";
+    this.score = 0;
+    this.speed = 8;
+    this.turned = false;
+    this.turn(direction);
+  }
+
+  turn(direction: Direction) {
+    if (this.turned) return;
+    const current = vectors[this.direction];
+    const next = vectors[direction];
+    if (current.x + next.x === 0 && current.y + next.y === 0) return;
+    this.direction = direction;
+    this.turned = true;
+  }
+
+  private setDirection(next: Cell) {
+    const head = this.cells[0]!;
+    this.direction =
+      next.x > head.x
+        ? "right"
+        : next.x < head.x
+          ? "left"
+          : next.y > head.y
+            ? "down"
+            : "up";
+  }
+
+  private placeFood() {
+    const occupied = new Set(this.cells.map((cell) => `${cell.x},${cell.y}`));
+    const free = this.route.filter(
+      (cell) => !occupied.has(`${cell.x},${cell.y}`),
+    );
+    this.food = free.length
+      ? { ...free[Math.floor(this.random() * free.length)]! }
+      : null;
+  }
+
+  private autoNext(head: Cell): Cell {
+    const capacity = this.route.length;
+    const index = this.indices.get(`${head.x},${head.y}`)!;
+    const fallback = this.route[(index + 1) % capacity]!;
+    if (!this.food || this.cells.length > capacity * 0.3) return fallback;
+    const tail = this.cells[this.cells.length - 1]!;
+    const tailIndex = this.indices.get(`${tail.x},${tail.y}`)!;
+    const foodIndex = this.indices.get(`${this.food.x},${this.food.y}`)!;
+    const distance = (target: number) => (target - index + capacity) % capacity;
+    const occupied = new Set(this.cells.map((cell) => `${cell.x},${cell.y}`));
+    const candidates = Object.values(vectors).map((vector) => ({
+      x: head.x + vector.x,
+      y: head.y + vector.y,
+    }));
+    let best = fallback;
+    let advance = 1;
+    for (const candidate of candidates) {
+      const candidateIndex = this.indices.get(`${candidate.x},${candidate.y}`);
+      if (
+        candidateIndex === undefined ||
+        occupied.has(`${candidate.x},${candidate.y}`)
+      )
+        continue;
+      const step = distance(candidateIndex);
+      // 头部只能沿回路向前越过空格，保留尾部前方余量且不越过食物。
+      if (
+        step > advance &&
+        step < distance(tailIndex) - 2 &&
+        step <= distance(foodIndex)
+      ) {
+        best = candidate;
+        advance = step;
+      }
+    }
+    return best;
+  }
+
+  tick() {
+    if (this.mode !== "auto" && this.mode !== "manual") return;
+    const head = this.cells[0]!;
+    let next: Cell;
+    if (this.mode === "auto") {
+      next = this.autoNext(head);
+      this.setDirection(next);
+    } else {
+      const vector = vectors[this.direction];
+      next = { x: head.x + vector.x, y: head.y + vector.y };
+    }
+    const eating = !!this.food && same(next, this.food);
+    const body = eating ? this.cells : this.cells.slice(0, -1);
+    if (
+      next.x < 0 ||
+      next.x >= this.columns ||
+      next.y < 0 ||
+      next.y >= this.rows ||
+      body.some((cell) => same(cell, next))
+    ) {
+      this.mode = "dead";
+      return;
+    }
+    this.cells.unshift({ ...next });
+    if (!eating || this.recycling) this.cells.pop();
+    if (eating) {
+      this.score++;
+      this.placeFood();
+    }
+    this.steps++;
+    if (this.mode === "auto") {
+      if (!this.recycling && this.cells.length >= this.maxGrowthLength) {
+        this.recycling = true;
+        this.colorPhase = 1 - this.colorPhase;
+      }
+      if (
+        this.recycling &&
+        this.steps % 3 === 0 &&
+        this.cells.length > this.initialLength
+      )
+        this.cells.pop();
+      if (this.recycling && this.cells.length <= this.initialLength)
+        this.recycling = false;
+    } else if (!this.food) this.mode = "won";
+    this.turned = false;
+  }
+}

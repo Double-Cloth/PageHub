@@ -15,7 +15,7 @@ printf '{"schema_version":1,"apps":[]}\n' > "$PAGEHUB_ROOT/config/apps.yaml"
 printf 'test-only-admin-token\n' > "$PAGEHUB_ROOT/secrets/admin.token"
 printf 'PAGEHUB_ROOT=%s\nPAGEHUB_GATEWAY_PORT=%s\nPAGEHUB_CADDY_IMAGE=%s\nPAGEHUB_PORTAL_IMAGE=%s\nPAGEHUB_OFFLINE=false\n' "$PAGEHUB_ROOT" "$PAGEHUB_GATEWAY_PORT" "$PAGEHUB_CADDY_IMAGE" "$PAGEHUB_PORTAL_IMAGE" > "$PAGEHUB_ROOT/config/pagehub.env"
 printf '{"version":"test"}\n' > "$PAGEHUB_ROOT/state/install-state.json"
-mkdir -p /run/pagehub /run/pagehub-public
+mkdir -p /run/pagehub /run/pagehub-public /run/pagehub-social
 docker network create pagehub-ingress
 runner gateway reload
 docker build -t "$PAGEHUB_PORTAL_IMAGE" -f /workspace/infrastructure/portal/Dockerfile /workspace
@@ -25,8 +25,10 @@ platform_compose gateway up -d --pull never --no-build
 runner_pid=$!
 "$PAGEHUB_ROOT/current/bin/pagehub-manager" &
 manager_pid=$!
+PAGEHUB_PUBLIC_ORIGIN="http://127.0.0.1:$PAGEHUB_GATEWAY_PORT" "$PAGEHUB_ROOT/current/bin/pagehub-social" &
+social_pid=$!
 cleanup() {
-  kill "$runner_pid" "$manager_pid" 2>/dev/null || true
+  kill "$runner_pid" "$manager_pid" "$social_pid" 2>/dev/null || true
   for id in static-demo image-demo compose-demo private-demo preserve-demo adopt-demo volume-demo bundled-demo; do runner remove-app "$id" 2>/dev/null || true; done
   if [[ -f /tmp/legacy-compose.json ]]; then docker compose -p pagehub-test-legacy -f /tmp/legacy-compose.json down || true; fi
   platform_compose gateway down || true
@@ -53,6 +55,16 @@ for name in static-site image-web compose-web; do
   runner add-app "$archive" --approved-sha256 "$(sha256sum "$archive" | cut -d ' ' -f1)"
 done
 python3 /workspace/tests/integration/verify.py
+python3 /workspace/tests/integration/ui_verify.py
+kill "$social_pid"
+wait "$social_pid" 2>/dev/null || true
+PAGEHUB_PUBLIC_ORIGIN="http://127.0.0.1:$PAGEHUB_GATEWAY_PORT" "$PAGEHUB_ROOT/current/bin/pagehub-social" &
+social_pid=$!
+for attempt in {1..20}; do
+  if curl -fsS "http://127.0.0.1:$PAGEHUB_GATEWAY_PORT/_pagehub/social/messages" | grep -q '真实服务持久化弹幕验收'; then break; fi
+  sleep 1
+done
+curl -fsS "http://127.0.0.1:$PAGEHUB_GATEWAY_PORT/_pagehub/social/messages" | grep -q '真实服务持久化弹幕验收'
 kill "$runner_pid" "$manager_pid"
 sleep 1
 curl -fsS "http://127.0.0.1:$PAGEHUB_GATEWAY_PORT/" >/dev/null

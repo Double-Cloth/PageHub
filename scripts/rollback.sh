@@ -11,4 +11,5 @@ mv -Tf "$PAGEHUB_ROOT/current.rollback" "$PAGEHUB_ROOT/current"
 printf '%s\n' "$current" > "$PAGEHUB_ROOT/state/previous-release"
 bash "$previous/scripts/enable-autostart.sh"
 systemctl restart pagehub-runner pagehub-manager
+if [[ -x "$previous/bin/pagehub-social" ]]; then systemctl restart pagehub-social; else systemctl stop pagehub-social || true; fi
 bash "$previous/scripts/start-services.sh"

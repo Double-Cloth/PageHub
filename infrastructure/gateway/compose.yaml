@@ -9,6 +9,7 @@ services:
       - ${PAGEHUB_ROOT:-/srv/pagehub}/gateway:/etc/caddy:ro
       - ${PAGEHUB_ROOT:-/srv/pagehub}/apps:/apps:ro
       - /run/pagehub-public:/run/pagehub-public:ro
+      - /run/pagehub-social:/run/pagehub-social:ro
       - caddy-data:/data
       - caddy-config:/config
     networks:

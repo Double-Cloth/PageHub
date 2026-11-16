@@ -17,6 +17,7 @@ chmod 0640 "$release/runtime.env"
 chown root:pagehub "$release/runtime.env"
 docker network inspect pagehub-ingress >/dev/null 2>&1 || docker network create pagehub-ingress >/dev/null
 install -d -m 0755 "$PAGEHUB_ROOT/gateway/public" /run/pagehub-public
+install -d -m 0755 -o pagehub-social -g pagehub /run/pagehub-social
 "$release/bin/pagehub-runner" gateway reload
 for component in gateway portal; do
   docker compose --project-name "pagehub-$component" --env-file "$PAGEHUB_ROOT/config/pagehub.env" -f "$release/infrastructure/$component/compose.yaml" config -q

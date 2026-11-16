@@ -19,9 +19,11 @@ import (
 	"time"
 
 	"github.com/double-cloth-studio/PageHub/backend/internal/adapters"
+	"github.com/double-cloth-studio/PageHub/backend/internal/auth"
 	"github.com/double-cloth-studio/PageHub/backend/internal/gateway"
 	"github.com/double-cloth-studio/PageHub/backend/internal/lifecycle"
 	"github.com/double-cloth-studio/PageHub/backend/internal/manifests"
+	"github.com/double-cloth-studio/PageHub/backend/internal/presentation"
 	"github.com/double-cloth-studio/PageHub/backend/internal/registry"
 )
 
@@ -131,6 +133,7 @@ type Job struct {
 	Action    string    `json:"action"`
 	State     string    `json:"state"`
 	Error     string    `json:"error,omitempty"`
+	Actor     string    `json:"actor,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
@@ -139,12 +142,21 @@ type Manager struct {
 	Runner    RunnerClient
 	TokenFile string
 	Frontend  string
+	Sessions  auth.Store
 	mu        sync.Mutex
 	active    map[string]bool
 }
 
 func (m *Manager) Public() http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /_pagehub/api/portal", func(w http.ResponseWriter, r *http.Request) {
+		settings, err := presentation.Public(m.Store)
+		if err != nil {
+			Fail(w, 503, "展示配置暂不可用")
+			return
+		}
+		JSON(w, 200, settings)
+	})
 	mux.HandleFunc("GET /_pagehub/api/health", func(w http.ResponseWriter, r *http.Request) { JSON(w, 200, map[string]string{"state": "healthy"}) })
 	mux.HandleFunc("GET /_pagehub/api/apps", func(w http.ResponseWriter, r *http.Request) {
 		rgy, err := m.Store.Load()
@@ -152,7 +164,7 @@ func (m *Manager) Public() http.Handler {
 			Fail(w, 503, "应用清单暂不可用")
 			return
 		}
-		JSON(w, 200, gateway.Catalog(rgy))
+		JSON(w, 200, gateway.CatalogWithReadiness(rgy, m.Store))
 	})
 	mux.HandleFunc("GET /_pagehub/api/apps/{id}/status", func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
@@ -172,6 +184,9 @@ func (m *Manager) Public() http.Handler {
 }
 
 func (m *Manager) authorized(w http.ResponseWriter, r *http.Request) bool {
+	if m.Sessions.Authorized(r) {
+		return true
+	}
 	b, err := os.ReadFile(m.TokenFile)
 	if err != nil {
 		Fail(w, 503, "管理凭据不可用")
@@ -184,7 +199,7 @@ func (m *Manager) authorized(w http.ResponseWriter, r *http.Request) bool {
 		Fail(w, 401, "需要管理员凭据")
 		return false
 	}
-	if origin := r.Header.Get("Origin"); origin != "" && origin != "http://"+r.Host {
+	if !auth.SafeOrigin(r) {
 		Fail(w, 403, "请求来源不允许")
 		return false
 	}
@@ -209,6 +224,7 @@ func (m *Manager) Admin() http.Handler {
 		}
 	}
 	mux := http.NewServeMux()
+	m.portalRoutes(mux)
 	mux.Handle("/_pagehub/api/", m.Public())
 	mux.HandleFunc("GET /admin/api/apps", func(w http.ResponseWriter, r *http.Request) {
 		if !m.authorized(w, r) {
@@ -221,7 +237,7 @@ func (m *Manager) Admin() http.Handler {
 		}
 		apps := []gateway.PublicApp{}
 		for _, a := range rgy.Apps {
-			entry := gateway.PublicApp{ID: a.Manifest.ID, Name: a.Manifest.Name, Description: a.Manifest.Description, Path: a.Manifest.Path, Kind: a.Manifest.Kind, Startup: a.Manifest.Startup, State: "unknown", Actions: a.Manifest.Lifecycle.Allow}
+			entry := gateway.PublicApp{ID: a.Manifest.ID, Name: a.Manifest.Name, Description: a.Manifest.Description, Path: a.Manifest.Path, Kind: a.Manifest.Kind, Startup: a.Manifest.Startup, State: "unknown", Actions: a.Manifest.Lifecycle.Allow, OfflineReady: a.Manifest.Visibility == "public" && presentation.OfflineReady(m.Store, a)}
 			apps = append(apps, entry)
 		}
 		JSON(w, 200, apps)
@@ -272,6 +288,8 @@ func (m *Manager) Admin() http.Handler {
 			return
 		}
 		files, _ := filepath.Glob(m.Store.Path("state", "manager", "jobs", "*.json"))
+		auditFiles, _ := filepath.Glob(m.Store.Path("state", "manager", "audit", "*.json"))
+		files = append(files, auditFiles...)
 		jobs := []Job{}
 		for _, file := range files {
 			var job Job
@@ -285,7 +303,7 @@ func (m *Manager) Admin() http.Handler {
 	})
 	fs := http.FileServer(http.Dir(m.Frontend))
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Security-Policy", "default-src 'self'; img-src 'self' data:; style-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'")
 		if r.URL.Path == "/admin" || r.URL.Path == "/admin/" {
 			r.URL.Path = "/"
 		}

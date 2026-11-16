@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/double-cloth-studio/PageHub/backend/internal/docker"
+	"github.com/double-cloth-studio/PageHub/backend/internal/presentation"
 	"github.com/double-cloth-studio/PageHub/backend/internal/registry"
 )
 
@@ -19,14 +20,15 @@ type Gateway struct {
 }
 
 type PublicApp struct {
-	ID          string   `json:"id"`
-	Name        string   `json:"name"`
-	Description string   `json:"description,omitempty"`
-	Path        string   `json:"path"`
-	Kind        string   `json:"kind"`
-	Startup     string   `json:"startup"`
-	State       string   `json:"state"`
-	Actions     []string `json:"actions"`
+	ID           string   `json:"id"`
+	Name         string   `json:"name"`
+	Description  string   `json:"description,omitempty"`
+	Path         string   `json:"path"`
+	Kind         string   `json:"kind"`
+	Startup      string   `json:"startup"`
+	State        string   `json:"state"`
+	Actions      []string `json:"actions"`
+	OfflineReady bool     `json:"offlineReady"`
 }
 
 func Catalog(r registry.Registry) []PublicApp {
@@ -41,11 +43,23 @@ func Catalog(r registry.Registry) []PublicApp {
 	return apps
 }
 
+func CatalogWithReadiness(r registry.Registry, store registry.Store) []PublicApp {
+	apps := Catalog(r)
+	byID := map[string]registry.Record{}
+	for _, record := range r.Apps {
+		byID[record.Manifest.ID] = record
+	}
+	for i := range apps {
+		apps[i].OfflineReady = presentation.OfflineReady(store, byID[apps[i].ID])
+	}
+	return apps
+}
+
 func Render(r registry.Registry) string {
 	apps := append([]registry.Record{}, r.Apps...)
 	sort.Slice(apps, func(i, j int) bool { return apps[i].Manifest.Path < apps[j].Manifest.Path })
 	var s strings.Builder
-	s.WriteString("{\n auto_https off\n}\n:80 {\n route {\n respond /healthz 200\n @admin path /admin /admin/*\n respond @admin 403\n handle /_pagehub/catalog.json {\n root * /etc/caddy/public\n rewrite * /catalog.json\n header Cache-Control no-store\n file_server\n }\n handle /_pagehub/api/* {\n reverse_proxy unix//run/pagehub-public/manager.sock\n }\n")
+	s.WriteString("{\n auto_https off\n}\n:80 {\n route {\n respond /healthz 200\n @admin path /admin /admin/*\n respond @admin 403\n handle /_pagehub/catalog.json {\n root * /etc/caddy/public\n rewrite * /catalog.json\n header Cache-Control no-store\n file_server\n }\n handle /_pagehub/social/* {\n reverse_proxy unix//run/pagehub-social/public.sock {\n header_up X-PageHub-Client {remote_host}\n flush_interval -1\n }\n }\n handle /_pagehub/api/* {\n reverse_proxy unix//run/pagehub-public/manager.sock\n }\n")
 	for _, a := range apps {
 		m := a.Manifest
 		fmt.Fprintf(&s, " redir %s %s 308\n", strings.TrimSuffix(m.Path, "/"), m.Path)
@@ -90,7 +104,7 @@ func (g Gateway) Commit(ctx context.Context, r registry.Registry) error {
 	if err := registry.AtomicWrite(g.Store.Path("gateway", "Caddyfile"), []byte(Render(r)), 0644); err != nil {
 		return err
 	}
-	if err := registry.WriteJSON(g.Store.Path("gateway", "public", "catalog.json"), Catalog(r), 0644); err != nil {
+	if err := registry.WriteJSON(g.Store.Path("gateway", "public", "catalog.json"), CatalogWithReadiness(r, g.Store), 0644); err != nil {
 		return err
 	}
 	// 首次安装时网关尚未启动，后续由安装流程启动。

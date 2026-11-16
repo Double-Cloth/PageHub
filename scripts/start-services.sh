@@ -7,7 +7,7 @@ docker image inspect "$(platform_compose gateway config --images)" "$(platform_c
 platform_compose portal up -d --no-build --pull never
 platform_compose gateway up -d --no-build --pull never
 failed=0
-systemctl start pagehub-runner.service pagehub-manager.service || failed=1
+systemctl start pagehub-runner.service pagehub-manager.service pagehub-social.service || failed=1
 runner recover "${1:-}" || failed=1
 bash "$PAGEHUB_ROOT/current/scripts/healthcheck.sh" || failed=1
 exit "$failed"

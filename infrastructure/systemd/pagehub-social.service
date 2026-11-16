@@ -1,0 +1,25 @@
+[Unit]
+Description=PageHub persistent danmaku service
+After=local-fs.target
+
+[Service]
+Type=simple
+User=pagehub-social
+Group=pagehub
+UMask=0027
+EnvironmentFile=/srv/pagehub/config/pagehub.env
+ExecStart=/srv/pagehub/current/bin/pagehub-social
+RuntimeDirectory=pagehub-social
+RuntimeDirectoryMode=0755
+Restart=on-failure
+RestartSec=3
+ProtectSystem=strict
+ReadWritePaths=/srv/pagehub/state/social /run/pagehub-social
+InaccessiblePaths=/srv/pagehub/secrets /srv/pagehub/apps /srv/pagehub/state/manager -/run/pagehub/runner.sock
+PrivateTmp=yes
+ProtectHome=yes
+NoNewPrivileges=yes
+RestrictAddressFamilies=AF_UNIX
+
+[Install]
+WantedBy=multi-user.target

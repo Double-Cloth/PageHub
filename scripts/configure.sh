@@ -3,13 +3,16 @@ source "$(dirname -- "${BASH_SOURCE[0]}")/lib/common.sh"
 require_root
 getent group pagehub >/dev/null || groupadd --system pagehub
 id pagehub >/dev/null 2>&1 || useradd --system --gid pagehub --home-dir "$PAGEHUB_ROOT" --shell /usr/sbin/nologin pagehub
+id pagehub-social >/dev/null 2>&1 || useradd --system --gid pagehub --home-dir "$PAGEHUB_ROOT/state/social" --shell /usr/sbin/nologin pagehub-social
 chown root:pagehub "$PAGEHUB_ROOT"
 chmod 0750 "$PAGEHUB_ROOT"
 for directory in releases config gateway state apps; do install -d -m 0750 -o root -g pagehub "$PAGEHUB_ROOT/$directory"; done
 chmod 2750 "$PAGEHUB_ROOT/config"
 install -d -m 0710 -o root -g pagehub "$PAGEHUB_ROOT/secrets"
 install -d -m 0700 "$PAGEHUB_ROOT/backups"
-install -d -m 0750 -o pagehub -g pagehub "$PAGEHUB_ROOT/state/manager"
+install -d -m 0750 -o pagehub -g pagehub "$PAGEHUB_ROOT/state/manager" "$PAGEHUB_ROOT/state/portal"
+install -d -m 0750 -o root -g pagehub "$PAGEHUB_ROOT/state/offline"
+install -d -m 0700 -o pagehub-social -g pagehub "$PAGEHUB_ROOT/state/social"
 if [[ ! -f "$PAGEHUB_ROOT/config/pagehub.env" ]]; then
   origin="${PAGEHUB_PUBLIC_ORIGIN:-http://localhost:$PAGEHUB_GATEWAY_PORT}"
   [[ "$origin" =~ ^https?://[a-zA-Z0-9.:-]+$ ]] || die 'PUBLIC_ORIGIN 应为完整 HTTP(S) Origin'
