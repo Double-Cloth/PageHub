@@ -134,7 +134,7 @@ func (m Manifest) Validate(devImages bool) error {
 		if m.Kind == "external" && len(m.Lifecycle.Allow) != 0 {
 			return errors.New("外部服务生命周期由原部署工具管理")
 		}
-		if m.Kind == "external-compose" && (!strings.HasPrefix(s.ComposeDirectory, "/") || !RelativeFile(s.ComposeFile) || !regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,62}$`).MatchString(s.Project) || strings.HasPrefix(s.Project, "pagehub-") || !regexp.MustCompile(`^[a-f0-9]{64}$`).MatchString(s.ConfigSHA256)) {
+		if m.Kind == "external-compose" && (!strings.HasPrefix(s.ComposeDirectory, "/") || !RelativeFile(s.ComposeFile) || !regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,62}$`).MatchString(s.Project) || (s.Project == "pagehub-gateway" || s.Project == "pagehub-portal") || !regexp.MustCompile(`^[a-f0-9]{64}$`).MatchString(s.ConfigSHA256)) {
 			return errors.New("既有 Compose 需要绝对目录、原项目名和已审核配置摘要")
 		}
 	case "static":
