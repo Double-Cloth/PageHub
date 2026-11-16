@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/Double-Cloth/PageHub/backend/internal/control"
-	"github.com/Double-Cloth/PageHub/backend/internal/registry"
+	"github.com/double-cloth-studio/PageHub/backend/internal/control"
+	"github.com/double-cloth-studio/PageHub/backend/internal/registry"
 )
 
 func main() {

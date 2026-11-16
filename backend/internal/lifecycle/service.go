@@ -7,11 +7,11 @@ import (
 	"os"
 	"time"
 
-	"github.com/Double-Cloth/PageHub/backend/internal/adapters"
-	"github.com/Double-Cloth/PageHub/backend/internal/gateway"
-	"github.com/Double-Cloth/PageHub/backend/internal/importer"
-	"github.com/Double-Cloth/PageHub/backend/internal/manifests"
-	"github.com/Double-Cloth/PageHub/backend/internal/registry"
+	"github.com/double-cloth-studio/PageHub/backend/internal/adapters"
+	"github.com/double-cloth-studio/PageHub/backend/internal/gateway"
+	"github.com/double-cloth-studio/PageHub/backend/internal/importer"
+	"github.com/double-cloth-studio/PageHub/backend/internal/manifests"
+	"github.com/double-cloth-studio/PageHub/backend/internal/registry"
 )
 
 type Service struct {
@@ -163,7 +163,7 @@ func (s Service) Remove(ctx context.Context, id string) error {
 		_ = s.Gateway.Commit(ctx, r)
 		return err
 	}
-	if a.Manifest.Kind != "static" {
+	if a.Manifest.Kind != "static" && a.Manifest.Kind != "external" && a.Manifest.Kind != "external-compose" {
 		if _, err = s.Adapter.Docker.Compose(ctx, a, "down", "--timeout", "30"); err != nil {
 			_ = s.Gateway.Commit(ctx, r)
 			return err
@@ -183,7 +183,7 @@ func (s Service) Rollback(ctx context.Context, id, receipt string) (err error) {
 	if a.Previous == nil {
 		return errors.New("没有可回退的版本")
 	}
-	if a.Manifest.Kind != "static" {
+	if a.Manifest.Kind != "static" && a.Manifest.Kind != "external" && a.Manifest.Kind != "external-compose" {
 		if err = importer.CheckMaintenance(receipt, id, a.Digest); err != nil {
 			return err
 		}
@@ -232,7 +232,7 @@ func (s Service) Rollback(ctx context.Context, id, receipt string) (err error) {
 		_ = s.Gateway.Commit(restoreCtx, oldRegistry)
 		_ = s.Store.Save(oldRegistry)
 	}()
-	if a.Manifest.Kind != "static" {
+	if a.Manifest.Kind != "static" && a.Manifest.Kind != "external" && a.Manifest.Kind != "external-compose" {
 		changed = true
 		if err = s.Adapter.Stop(ctx, a); err != nil {
 			return err

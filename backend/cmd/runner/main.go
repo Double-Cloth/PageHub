@@ -13,13 +13,13 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/Double-Cloth/PageHub/backend/internal/adapters"
-	"github.com/Double-Cloth/PageHub/backend/internal/control"
-	"github.com/Double-Cloth/PageHub/backend/internal/docker"
-	"github.com/Double-Cloth/PageHub/backend/internal/gateway"
-	"github.com/Double-Cloth/PageHub/backend/internal/importer"
-	"github.com/Double-Cloth/PageHub/backend/internal/lifecycle"
-	"github.com/Double-Cloth/PageHub/backend/internal/registry"
+	"github.com/double-cloth-studio/PageHub/backend/internal/adapters"
+	"github.com/double-cloth-studio/PageHub/backend/internal/control"
+	"github.com/double-cloth-studio/PageHub/backend/internal/docker"
+	"github.com/double-cloth-studio/PageHub/backend/internal/gateway"
+	"github.com/double-cloth-studio/PageHub/backend/internal/importer"
+	"github.com/double-cloth-studio/PageHub/backend/internal/lifecycle"
+	"github.com/double-cloth-studio/PageHub/backend/internal/registry"
 )
 
 func main() {
@@ -153,7 +153,16 @@ func run() error {
 		plan, err := imp.Import(ctx, archive, importer.Options{DryRun: *dry, ApprovedSHA256: *sha, Update: update, MaintenanceReceipt: *receipt, AdoptProject: *project, ExpectedID: *expectedID})
 		_ = json.NewEncoder(os.Stdout).Encode(plan)
 		return err
+	case "restore":
+		if len(args) < 3 || len(args) > 4 || (len(args) == 4 && args[3] != "--dry-run") {
+			return errors.New("用法: restore <id> <备份目录> [--dry-run]")
+		}
+		return service.Restore(ctx, args[1], args[2], len(args) == 4)
 	case "backup":
+		if len(args) == 4 && args[1] == "verify" {
+			return service.VerifyBackup(ctx, args[2], args[3])
+		}
+
 		if len(args) != 2 {
 			return errors.New("用法: backup <id>")
 		}

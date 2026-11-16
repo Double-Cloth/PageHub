@@ -18,7 +18,7 @@ for item in bundled['packages']:
 mapping = {}
 for app in registry['apps']:
     manifest = app['manifest']
-    if manifest['kind'] == 'static':
+    if manifest['kind'] in ('static', 'external', 'external-compose'):
         continue
     directory = pathlib.Path(app['directory'])
     runtime = json.load(open(directory / 'pagehub.runtime.json', encoding='utf-8'))

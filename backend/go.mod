@@ -1,4 +1,4 @@
-module github.com/Double-Cloth/PageHub/backend
+module github.com/double-cloth-studio/PageHub/backend
 
 go 1.25.0
 

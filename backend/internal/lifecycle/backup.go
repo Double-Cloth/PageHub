@@ -14,9 +14,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Double-Cloth/PageHub/backend/internal/docker"
+	"github.com/double-cloth-studio/PageHub/backend/internal/docker"
 
-	"github.com/Double-Cloth/PageHub/backend/internal/registry"
+	"github.com/double-cloth-studio/PageHub/backend/internal/registry"
 )
 
 func (s Service) Backup(ctx context.Context, id string) (destination string, err error) {
@@ -38,6 +38,11 @@ func (s Service) Backup(ctx context.Context, id string) (destination string, err
 		return "", err
 	}
 	defer u()
+	return s.backupLocked(ctx, a)
+}
+
+func (s Service) backupLocked(ctx context.Context, a registry.Record) (destination string, err error) {
+	id := a.Manifest.ID
 	dest := s.Store.Path("backups", id, time.Now().UTC().Format("20060102T150405.000000000Z"))
 	if err = os.MkdirAll(dest, 0700); err != nil {
 		return "", err
