@@ -12,7 +12,7 @@ export interface AppEntry {
   name: string;
   description?: string;
   path: string;
-  kind: "static" | "image" | "compose";
+  kind: "static" | "image" | "compose" | "external" | "external-compose";
   startup: "always" | "manual";
   state: AppState;
   actions: Action[] | null;

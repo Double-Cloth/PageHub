@@ -8,8 +8,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/Double-Cloth/PageHub/backend/internal/docker"
-	"github.com/Double-Cloth/PageHub/backend/internal/registry"
+	"github.com/double-cloth-studio/PageHub/backend/internal/docker"
+	"github.com/double-cloth-studio/PageHub/backend/internal/registry"
 )
 
 type Gateway struct {
@@ -62,6 +62,8 @@ func Render(r registry.Registry) string {
 				fmt.Fprintf(&s, " try_files {path} /%s\n", m.Source.Fallback)
 			}
 			s.WriteString(" file_server\n")
+		} else if m.Kind == "external" || m.Kind == "external-compose" {
+			fmt.Fprintf(&s, " reverse_proxy %s\n", m.Source.Upstream)
 		} else {
 			fmt.Fprintf(&s, " reverse_proxy pagehub-%s-web:%d\n", m.ID, m.Source.ContainerPort)
 		}

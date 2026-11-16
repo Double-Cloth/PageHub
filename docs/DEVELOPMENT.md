@@ -29,3 +29,7 @@ docker run --rm --network host \
 测试 helper 使用本机 Docker Socket，在隔离测试环境内创建、启停和清理测试工程。生产组件遵循独立的受限 Socket 模型。测试卷默认保留以供诊断，重新运行使用新的空卷。
 
 完整安装和真实 reboot 验收需要 systemd VM，不能由普通容器集成测试替代。
+
+## 独立 UI 开发
+
+运行 `npm --prefix frontend run dev:ui` 启动本地演示接口和 UI，无需 Docker 或后端。管理页面 /admin/ 接受任意非空演示 Token，状态保存在当前 Vite 进程中。默认仅监听 127.0.0.1。端口被占用时追加 `-- --port 15173`。生产构建不加载演示中间件。真实后端联调使用原 dev 命令。

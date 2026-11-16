@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/Double-Cloth/PageHub/app.schema.json",
+  "$id": "https://github.com/double-cloth-studio/PageHub/app.schema.json",
   "title": "PageHub 应用描述文件",
   "type": "object",
   "additionalProperties": false,
@@ -11,7 +11,7 @@
     "name": { "type": "string", "minLength": 1, "maxLength": 100 },
     "description": { "type": "string", "maxLength": 500 },
     "version": { "type": "string", "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$" },
-    "kind": { "enum": ["static", "image", "compose"] },
+    "kind": { "enum": ["static", "image", "compose", "external", "external-compose"] },
     "path": { "type": "string", "pattern": "^/[a-zA-Z0-9_-]+(/[a-zA-Z0-9_-]+)*/$" },
     "startup": { "enum": ["always", "manual"] },
     "visibility": { "enum": ["public", "private"] },
@@ -20,6 +20,11 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
+        "upstream": { "type": "string" },
+        "compose_directory": { "type": "string" },
+        "project": { "type": "string" },
+        "config_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "approvals": { "type": "object" },
         "static_dir": { "$ref": "#/$defs/file" },
         "fallback": { "$ref": "#/$defs/file" },
         "image": { "type": "string", "pattern": "^(sha256:[a-f0-9]{64}|[a-zA-Z0-9][a-zA-Z0-9./:_-]*@sha256:[a-f0-9]{64})$" },

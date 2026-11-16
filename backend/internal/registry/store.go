@@ -13,7 +13,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/Double-Cloth/PageHub/backend/internal/manifests"
+	"github.com/double-cloth-studio/PageHub/backend/internal/manifests"
 )
 
 type Record struct {

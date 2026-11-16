@@ -228,6 +228,8 @@ onUnmounted(() => {
           <option value="static">静态站点</option>
           <option value="image">单镜像应用</option>
           <option value="compose">Compose 应用</option>
+          <option value="external-compose">既有 Compose</option>
+          <option value="external">外部服务</option>
         </select>
       </div>
       <AppCatalog

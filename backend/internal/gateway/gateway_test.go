@@ -1,8 +1,8 @@
 package gateway
 
 import (
-	"github.com/Double-Cloth/PageHub/backend/internal/manifests"
-	"github.com/Double-Cloth/PageHub/backend/internal/registry"
+	"github.com/double-cloth-studio/PageHub/backend/internal/manifests"
+	"github.com/double-cloth-studio/PageHub/backend/internal/registry"
 	"strings"
 	"testing"
 )

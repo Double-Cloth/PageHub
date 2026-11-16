@@ -18,11 +18,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Double-Cloth/PageHub/backend/internal/adapters"
-	"github.com/Double-Cloth/PageHub/backend/internal/gateway"
-	"github.com/Double-Cloth/PageHub/backend/internal/lifecycle"
-	"github.com/Double-Cloth/PageHub/backend/internal/manifests"
-	"github.com/Double-Cloth/PageHub/backend/internal/registry"
+	"github.com/double-cloth-studio/PageHub/backend/internal/adapters"
+	"github.com/double-cloth-studio/PageHub/backend/internal/gateway"
+	"github.com/double-cloth-studio/PageHub/backend/internal/lifecycle"
+	"github.com/double-cloth-studio/PageHub/backend/internal/manifests"
+	"github.com/double-cloth-studio/PageHub/backend/internal/registry"
 )
 
 func JSON(w http.ResponseWriter, status int, v any) {

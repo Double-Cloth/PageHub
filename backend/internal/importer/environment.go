@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/Double-Cloth/PageHub/backend/internal/registry"
+	"github.com/double-cloth-studio/PageHub/backend/internal/registry"
 )
 
 func PreserveEnvironment(old, next registry.Record) error {

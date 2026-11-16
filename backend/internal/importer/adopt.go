@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/Double-Cloth/PageHub/backend/internal/registry"
+	"github.com/double-cloth-studio/PageHub/backend/internal/registry"
 )
 
 type existingContainer struct {

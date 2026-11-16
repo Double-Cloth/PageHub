@@ -138,6 +138,16 @@ for name, digest in receipt['files'].items():
     assert hashlib.sha256((backup_dir / name).read_bytes()).hexdigest() == digest
 wait_healthy('compose-demo')
 assert request('/compose-demo/api/value') == b'persistent-test-value'
+runner('backup', 'verify', 'compose-demo', str(backup_dir))
+runner('restore', 'compose-demo', str(backup_dir), '--dry-run')
+request('/compose-demo/api/value', data=b'changed-after-backup')
+runner('app', 'stop', 'compose-demo')
+runner('restore', 'compose-demo', str(backup_dir))
+runner('app', 'start', 'compose-demo')
+wait_healthy('compose-demo')
+assert request('/compose-demo/api/value') == b'persistent-test-value'
+assert json.loads((backup_dir / 'verification.json').read_text())['restore_verified']
+
 runner('backup', 'image-demo', ok=False)
 
 
@@ -226,6 +236,8 @@ runner('update', 'compose-demo', str(new_zip), '--maintenance-receipt', str(main
 assert request('/compose-demo/api/value') == b'persistent-test-value'
 updated = next(app for app in json.loads((root / 'config/apps.yaml').read_text())['apps'] if app['manifest']['id'] == 'compose-demo')
 assert updated['manifest']['version'] == '1.0.1'
+backup_dir = pathlib.Path(runner('backup', 'compose-demo').strip())
+runner('backup', 'verify', 'compose-demo', str(backup_dir))
 maintenance.write_text(json.dumps({'id': 'compose-demo', 'digest': updated['digest'], 'backup': str(backup_dir / 'receipt.json'), 'restore_verified': True, 'expires_at': '2099-01-01T00:00:00Z'}))
 runner('rollback', 'compose-demo', '--maintenance-receipt', str(maintenance))
 assert request('/compose-demo/api/value') == b'persistent-test-value'
@@ -271,3 +283,24 @@ subprocess.run(['bash', str(root / 'current/scripts/import-bundled-apps.sh')], c
 assert (root / 'config/apps.yaml').read_bytes() == registered
 assert b'bundled-demo' in registered and b'disabled-demo' not in registered
 print('PASS 三类适配器 / API / 任务 / WebSocket / Range / 持久化 / 健康失败回退 / 网关失败 / 更新回滚 / 私有路由 / 备份 / 显式接管')
+
+# 外部服务只移除登记，原应用持续可用。
+external = copy.deepcopy(record['manifest'])
+external.update(id='external-demo', path='/external-demo/', kind='external', startup='manual')
+external['source'] = {'upstream': 'http://pagehub-compose-demo-web:3000'}
+external['backup'] = {'mode': 'external'}
+external['lifecycle'] = {'allow': []}
+external_zip = package('external', external, {})
+approve('add-app', external_zip)
+assert request('/external-demo/api/value') == b'persistent-test-value'
+runner('remove-app', 'external-demo')
+assert request('/compose-demo/api/value') == b'persistent-test-value'
+
+# 审核原 Compose 配置并保留既有工程。
+review = json.loads(runner('compose-review', '/tmp', 'legacy-compose.json', 'pagehub-test-legacy'))
+external.update(id='external-compose-demo', path='/external-compose-demo/', kind='external-compose')
+external['source'].update(compose_directory='/tmp', compose_file='legacy-compose.json', project='pagehub-test-legacy', **review)
+external_compose_zip = package('external-compose', external, {})
+approve('add-app', external_compose_zip)
+runner('remove-app', 'external-compose-demo')
+assert request('/adopt-demo/api/value') == b'adopted-persistent-value'

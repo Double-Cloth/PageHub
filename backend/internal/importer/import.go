@@ -12,10 +12,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Double-Cloth/PageHub/backend/internal/adapters"
-	"github.com/Double-Cloth/PageHub/backend/internal/gateway"
-	"github.com/Double-Cloth/PageHub/backend/internal/manifests"
-	"github.com/Double-Cloth/PageHub/backend/internal/registry"
+	"github.com/double-cloth-studio/PageHub/backend/internal/adapters"
+	"github.com/double-cloth-studio/PageHub/backend/internal/gateway"
+	"github.com/double-cloth-studio/PageHub/backend/internal/manifests"
+	"github.com/double-cloth-studio/PageHub/backend/internal/registry"
 )
 
 type Importer struct {
@@ -156,8 +156,13 @@ func (i Importer) Import(ctx context.Context, archive string, opts Options) (pla
 		return plan, err
 	}
 	defer unlock()
-	if old != nil && m.Kind != "static" {
+	if old != nil && m.Kind != "static" && m.Kind != "external" && m.Kind != "external-compose" {
 		if err = CheckMaintenance(opts.MaintenanceReceipt, m.ID, old.Digest); err != nil {
+			return plan, err
+		}
+	}
+	if old != nil && old.Manifest.Backup.Mode == "volume" {
+		if err = CheckBackupVerification(opts.MaintenanceReceipt, m.ID, old.Digest); err != nil {
 			return plan, err
 		}
 	}
@@ -201,7 +206,7 @@ func (i Importer) Import(ctx context.Context, archive string, opts Options) (pla
 			return plan, adoptErr
 		}
 		adoptionOriginal = &original
-	} else if m.Kind != "static" {
+	} else if m.Kind != "static" && m.Kind != "external" && m.Kind != "external-compose" {
 		if os.Getenv("PAGEHUB_OFFLINE") != "true" {
 			if err = i.PrepareImages(ctx, a); err != nil {
 				return plan, err
@@ -282,7 +287,7 @@ func (i Importer) Import(ctx context.Context, archive string, opts Options) (pla
 			return plan, err
 		}
 	}
-	if (m.Startup == "always" || adoptionOriginal != nil) && m.Kind != "static" {
+	if (m.Startup == "always" || adoptionOriginal != nil) && m.Kind != "static" && m.Kind != "external" && m.Kind != "external-compose" {
 		started = true
 		if err = i.Adapter.Start(ctx, a); err != nil {
 			return plan, err

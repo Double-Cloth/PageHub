@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Double-Cloth/PageHub/backend/internal/adapters"
-	"github.com/Double-Cloth/PageHub/backend/internal/registry"
+	"github.com/double-cloth-studio/PageHub/backend/internal/adapters"
+	"github.com/double-cloth-studio/PageHub/backend/internal/registry"
 )
 
 func TestDryRunDoesNotCreateProductionFiles(t *testing.T) {

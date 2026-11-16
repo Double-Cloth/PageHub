@@ -36,12 +36,17 @@ type Manifest struct {
 }
 
 type Source struct {
-	StaticDir     string `yaml:"static_dir,omitempty" json:"static_dir,omitempty"`
-	Fallback      string `yaml:"fallback,omitempty" json:"fallback,omitempty"`
-	Image         string `yaml:"image,omitempty" json:"image,omitempty"`
-	ComposeFile   string `yaml:"compose_file,omitempty" json:"compose_file,omitempty"`
-	WebService    string `yaml:"web_service,omitempty" json:"web_service,omitempty"`
-	ContainerPort int    `yaml:"container_port,omitempty" json:"container_port,omitempty"`
+	Upstream         string         `yaml:"upstream,omitempty" json:"upstream,omitempty"`
+	ComposeDirectory string         `yaml:"compose_directory,omitempty" json:"compose_directory,omitempty"`
+	Project          string         `yaml:"project,omitempty" json:"project,omitempty"`
+	ConfigSHA256     string         `yaml:"config_sha256,omitempty" json:"config_sha256,omitempty"`
+	Approvals        map[string]any `yaml:"approvals,omitempty" json:"approvals,omitempty"`
+	StaticDir        string         `yaml:"static_dir,omitempty" json:"static_dir,omitempty"`
+	Fallback         string         `yaml:"fallback,omitempty" json:"fallback,omitempty"`
+	Image            string         `yaml:"image,omitempty" json:"image,omitempty"`
+	ComposeFile      string         `yaml:"compose_file,omitempty" json:"compose_file,omitempty"`
+	WebService       string         `yaml:"web_service,omitempty" json:"web_service,omitempty"`
+	ContainerPort    int            `yaml:"container_port,omitempty" json:"container_port,omitempty"`
 }
 
 type Health struct {
@@ -114,7 +119,24 @@ func (m Manifest) Validate(devImages bool) error {
 		return errors.New("backup.mode 无效")
 	}
 	s := m.Source
+	if m.Kind != "external" && m.Kind != "external-compose" && (s.Upstream != "" || s.ComposeDirectory != "" || s.Project != "" || s.ConfigSHA256 != "" || len(s.Approvals) > 0) {
+		return errors.New("标准包不能声明外部接入字段")
+	}
 	switch m.Kind {
+	case "external", "external-compose":
+		u, err := url.Parse(s.Upstream)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.Path != "" || !regexp.MustCompile(`^https?://[a-zA-Z0-9.\[\]:_-]+$`).MatchString(s.Upstream) {
+			return errors.New("upstream 必须是网关可达的 HTTP(S) Origin")
+		}
+		if m.Backup.Mode != "external" || m.Startup != "manual" {
+			return errors.New("外部应用要求 manual 和 external 备份")
+		}
+		if m.Kind == "external" && len(m.Lifecycle.Allow) != 0 {
+			return errors.New("外部服务生命周期由原部署工具管理")
+		}
+		if m.Kind == "external-compose" && (!strings.HasPrefix(s.ComposeDirectory, "/") || !RelativeFile(s.ComposeFile) || !regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,62}$`).MatchString(s.Project) || (s.Project == "pagehub-gateway" || s.Project == "pagehub-portal") || !regexp.MustCompile(`^[a-f0-9]{64}$`).MatchString(s.ConfigSHA256)) {
+			return errors.New("既有 Compose 需要绝对目录、原项目名和已审核配置摘要")
+		}
 	case "static":
 		if !RelativeFile(s.StaticDir) || (s.Fallback != "" && !RelativeFile(s.Fallback)) || s.Image != "" || s.ComposeFile != "" || s.WebService != "" || s.ContainerPort != 0 || len(m.Lifecycle.Allow) != 0 || m.Startup != "always" || m.RouteMode != "strip_prefix" || m.Backup.Mode == "volume" {
 			return errors.New("static 配置无效，静态应用必须 always、strip_prefix 且不提供容器操作")

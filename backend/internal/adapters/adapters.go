@@ -11,9 +11,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Double-Cloth/PageHub/backend/internal/docker"
-	"github.com/Double-Cloth/PageHub/backend/internal/manifests"
-	"github.com/Double-Cloth/PageHub/backend/internal/registry"
+	"github.com/double-cloth-studio/PageHub/backend/internal/docker"
+	"github.com/double-cloth-studio/PageHub/backend/internal/manifests"
+	"github.com/double-cloth-studio/PageHub/backend/internal/registry"
 	"gopkg.in/yaml.v3"
 )
 
@@ -54,6 +54,12 @@ func (b Builtin) Plan(a registry.Record, action string) (ExecutionPlan, error) {
 
 func (b Builtin) Validate(ctx context.Context, a registry.Record) error {
 	m := a.Manifest
+	if m.Kind == "external" {
+		return m.Validate(b.DevImages)
+	}
+	if m.Kind == "external-compose" {
+		return b.validateExternalCompose(ctx, a)
+	}
 	if err := m.Validate(b.DevImages); err != nil {
 		return err
 	}
@@ -257,6 +263,12 @@ func CheckResolved(config map[string]any, dir, project string, dev bool) error {
 }
 
 func (b Builtin) Start(ctx context.Context, a registry.Record) error {
+	if a.Manifest.Kind == "external-compose" {
+		return b.externalComposeAction(ctx, a, "start")
+	}
+	if a.Manifest.Kind == "external" {
+		return nil
+	}
 	if a.Manifest.Kind == "static" {
 		return nil
 	}
@@ -265,6 +277,12 @@ func (b Builtin) Start(ctx context.Context, a registry.Record) error {
 }
 
 func (b Builtin) Stop(ctx context.Context, a registry.Record) error {
+	if a.Manifest.Kind == "external-compose" {
+		return b.externalComposeAction(ctx, a, "stop")
+	}
+	if a.Manifest.Kind == "external" {
+		return nil
+	}
 	if a.Manifest.Kind == "static" {
 		return errors.New("静态应用通过网关托管，无独立容器")
 	}
@@ -274,6 +292,9 @@ func (b Builtin) Stop(ctx context.Context, a registry.Record) error {
 
 func (b Builtin) Inspect(ctx context.Context, a registry.Record) Status {
 	status := Status{ID: a.Manifest.ID, State: "unknown"}
+	if a.Manifest.Kind == "external" || a.Manifest.Kind == "external-compose" {
+		return b.Probe(ctx, a)
+	}
 	if a.Manifest.Kind == "static" {
 		st, err := os.Stat(filepath.Join(a.Directory, a.Manifest.Source.StaticDir))
 		if err != nil || !st.IsDir() {

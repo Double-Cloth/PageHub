@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -13,13 +15,13 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/Double-Cloth/PageHub/backend/internal/adapters"
-	"github.com/Double-Cloth/PageHub/backend/internal/control"
-	"github.com/Double-Cloth/PageHub/backend/internal/docker"
-	"github.com/Double-Cloth/PageHub/backend/internal/gateway"
-	"github.com/Double-Cloth/PageHub/backend/internal/importer"
-	"github.com/Double-Cloth/PageHub/backend/internal/lifecycle"
-	"github.com/Double-Cloth/PageHub/backend/internal/registry"
+	"github.com/double-cloth-studio/PageHub/backend/internal/adapters"
+	"github.com/double-cloth-studio/PageHub/backend/internal/control"
+	"github.com/double-cloth-studio/PageHub/backend/internal/docker"
+	"github.com/double-cloth-studio/PageHub/backend/internal/gateway"
+	"github.com/double-cloth-studio/PageHub/backend/internal/importer"
+	"github.com/double-cloth-studio/PageHub/backend/internal/lifecycle"
+	"github.com/double-cloth-studio/PageHub/backend/internal/registry"
 )
 
 func main() {
@@ -67,6 +69,32 @@ func run() error {
 		}
 		server := &http.Server{Handler: control.RunnerHandler(service), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 200 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 16384}
 		return server.Serve(listener)
+	case "compose-review":
+		if len(args) != 4 || !filepath.IsAbs(args[1]) {
+			return errors.New("用法: compose-review <绝对目录> <compose文件> <项目名>")
+		}
+		out, err := d.Run(ctx, args[1], "compose", "--project-directory", args[1], "--project-name", args[3], "-f", filepath.Join(args[1], args[2]), "config", "--format", "json")
+		if err != nil {
+			return err
+		}
+		var config map[string]any
+		if err = json.Unmarshal(out, &config); err != nil {
+			return err
+		}
+		canonical, err := json.Marshal(config)
+		if err != nil {
+			return err
+		}
+		sum := sha256.Sum256(canonical)
+		approvals := map[string]any{}
+		services, _ := config["services"].(map[string]any)
+		for name, value := range services {
+			service, _ := value.(map[string]any)
+			for key, value := range service {
+				approvals[name+"."+key] = value
+			}
+		}
+		return json.NewEncoder(os.Stdout).Encode(map[string]any{"config_sha256": hex.EncodeToString(sum[:]), "approvals": approvals})
 	case "status":
 		r, err := store.Load()
 		if err != nil {
@@ -153,7 +181,16 @@ func run() error {
 		plan, err := imp.Import(ctx, archive, importer.Options{DryRun: *dry, ApprovedSHA256: *sha, Update: update, MaintenanceReceipt: *receipt, AdoptProject: *project, ExpectedID: *expectedID})
 		_ = json.NewEncoder(os.Stdout).Encode(plan)
 		return err
+	case "restore":
+		if len(args) < 3 || len(args) > 4 || (len(args) == 4 && args[3] != "--dry-run") {
+			return errors.New("用法: restore <id> <备份目录> [--dry-run]")
+		}
+		return service.Restore(ctx, args[1], args[2], len(args) == 4)
 	case "backup":
+		if len(args) == 4 && args[1] == "verify" {
+			return service.VerifyBackup(ctx, args[2], args[3])
+		}
+
 		if len(args) != 2 {
 			return errors.New("用法: backup <id>")
 		}
