@@ -1,0 +1,19 @@
+name: pagehub-portal
+services:
+  web:
+    image: ${PAGEHUB_PORTAL_IMAGE:-pagehub-portal:0.1.0}
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /data
+      - /config
+    networks:
+      ingress:
+        aliases:
+          - pagehub-portal-web
+    security_opt:
+      - no-new-privileges:true
+networks:
+  ingress:
+    external: true
+    name: pagehub-ingress

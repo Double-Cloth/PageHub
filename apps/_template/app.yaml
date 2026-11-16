@@ -1,0 +1,21 @@
+schema_version: 1
+id: my-app
+name: 我的应用
+version: 1.0.0
+kind: compose
+path: /my-app/
+startup: manual
+visibility: public
+route_mode: strip_prefix
+source:
+  compose_file: compose.yaml
+  web_service: web
+  container_port: 80
+health:
+  path: /
+  interval_seconds: 15
+  timeout_seconds: 5
+lifecycle:
+  allow: [start, stop, restart]
+backup:
+  mode: none

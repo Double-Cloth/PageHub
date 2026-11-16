@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Double-Cloth/PageHub/app.schema.json",
+  "title": "PageHub 应用描述文件",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "id", "name", "version", "kind", "path", "startup", "visibility", "route_mode", "source", "lifecycle", "backup"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]{1,47}$" },
+    "name": { "type": "string", "minLength": 1, "maxLength": 100 },
+    "description": { "type": "string", "maxLength": 500 },
+    "version": { "type": "string", "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$" },
+    "kind": { "enum": ["static", "image", "compose"] },
+    "path": { "type": "string", "pattern": "^/[a-zA-Z0-9_-]+(/[a-zA-Z0-9_-]+)*/$" },
+    "startup": { "enum": ["always", "manual"] },
+    "visibility": { "enum": ["public", "private"] },
+    "route_mode": { "enum": ["strip_prefix", "preserve_prefix"] },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "static_dir": { "$ref": "#/$defs/file" },
+        "fallback": { "$ref": "#/$defs/file" },
+        "image": { "type": "string", "pattern": "^(sha256:[a-f0-9]{64}|[a-zA-Z0-9][a-zA-Z0-9./:_-]*@sha256:[a-f0-9]{64})$" },
+        "compose_file": { "$ref": "#/$defs/file" },
+        "web_service": { "type": "string", "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,62}$" },
+        "container_port": { "type": "integer", "minimum": 1, "maximum": 65535 }
+      }
+    },
+    "health": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "path": { "type": "string", "pattern": "^/" },
+        "interval_seconds": { "type": "integer", "minimum": 1, "maximum": 3600, "default": 15 },
+        "timeout_seconds": { "type": "integer", "minimum": 1, "maximum": 60, "default": 5 }
+      }
+    },
+    "lifecycle": {
+      "type": "object", "additionalProperties": false, "required": ["allow"],
+      "properties": { "allow": { "type": "array", "uniqueItems": true, "items": { "enum": ["start", "stop", "restart"] } } }
+    },
+    "backup": {
+      "type": "object", "additionalProperties": false, "required": ["mode"],
+      "properties": { "mode": { "enum": ["none", "volume", "external"] } }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "kind": { "const": "static" } } },
+      "then": {
+        "properties": {
+          "startup": { "const": "always" }, "route_mode": { "const": "strip_prefix" },
+          "source": { "required": ["static_dir"], "not": { "anyOf": [{ "required": ["image"] }, { "required": ["compose_file"] }, { "required": ["web_service"] }, { "required": ["container_port"] }] } },
+          "lifecycle": { "properties": { "allow": { "maxItems": 0 } } },
+          "backup": { "properties": { "mode": { "enum": ["none", "external"] } } }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "kind": { "const": "image" } } },
+      "then": { "properties": { "source": { "required": ["image", "container_port"], "not": { "anyOf": [{ "required": ["static_dir"] }, { "required": ["fallback"] }, { "required": ["compose_file"] }, { "required": ["web_service"] }] } } } }
+    },
+    {
+      "if": { "properties": { "kind": { "const": "compose" } } },
+      "then": { "properties": { "source": { "required": ["compose_file", "web_service", "container_port"], "not": { "anyOf": [{ "required": ["static_dir"] }, { "required": ["fallback"] }, { "required": ["image"] }] } } } }
+    }
+  ],
+  "$defs": { "file": { "type": "string", "pattern": "^[a-zA-Z0-9_./-]+$", "minLength": 1 } }
+}

@@ -1,0 +1,21 @@
+schema_version: 1
+id: static-demo
+name: 静态示例
+description: 独立 HTML 与静态资源，用于验证子路径和 SPA 回退。
+version: 1.0.0
+kind: static
+path: /static-demo/
+startup: always
+visibility: public
+route_mode: strip_prefix
+source:
+  static_dir: dist
+  fallback: index.html
+health:
+  path: /
+  interval_seconds: 15
+  timeout_seconds: 5
+lifecycle:
+  allow: []
+backup:
+  mode: external

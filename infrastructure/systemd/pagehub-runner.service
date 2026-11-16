@@ -1,0 +1,27 @@
+[Unit]
+Description=PageHub restricted local runner
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=simple
+User=root
+Group=pagehub
+UMask=0007
+EnvironmentFile=/srv/pagehub/config/pagehub.env
+EnvironmentFile=/srv/pagehub/current/runtime.env
+ExecStart=/srv/pagehub/current/bin/pagehub-runner serve
+RuntimeDirectory=pagehub
+RuntimeDirectoryMode=0750
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=200
+ProtectSystem=strict
+ReadWritePaths=/srv/pagehub /run/pagehub
+PrivateTmp=yes
+ProtectHome=read-only
+NoNewPrivileges=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,14 @@
+node_modules/
+frontend/dist/
+bin/
+/dist/
+/tmp/
+.env
+*.log
+*.exe
+.DS_Store
+.idea/
+.vscode/
+coverage/
+playwright-report/
+test-results/

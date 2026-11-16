@@ -1,0 +1,40 @@
+name: CI
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: go test -race ./... && go vet ./...
+        working-directory: backend
+      - run: npm ci && npm test && npm run build
+        working-directory: frontend
+      - run: find . -path ./frontend/node_modules -prune -o -name '*.sh' -exec bash -n {} \;
+      - run: |
+          mkdir -p bin
+          cd backend
+          CGO_ENABLED=0 go build -o ../bin/pagehub-runner ./cmd/runner
+          CGO_ENABLED=0 go build -o ../bin/pagehub-manager ./cmd/manager
+      - run: |
+          bash scripts/package-release.sh source
+          mkdir -p /tmp/pagehub-release
+          tar -xzf dist/pagehub-*-source-*.tar.gz -C /tmp/pagehub-release
+          cp -a bin /tmp/pagehub-release/
+          mkdir -p /tmp/pagehub-release/frontend/dist
+          cp -a frontend/dist/. /tmp/pagehub-release/frontend/dist/
+          docker pull caddy:2.10.2-alpine
+          docker build -t pagehub-test-tools -f tests/integration/Dockerfile .
+          docker volume create pagehub-test-runtime
+          root=$(docker volume inspect pagehub-test-runtime --format '{{.Mountpoint}}')
+          docker run --rm --network host -e PAGEHUB_ROOT="$root" -e PAGEHUB_GATEWAY_PORT=18080 -v /var/run/docker.sock:/var/run/docker.sock -v "$root:$root" -v /run/pagehub-public:/run/pagehub-public -v /tmp/pagehub-release:/workspace:ro pagehub-test-tools /workspace/tests/integration/run.sh

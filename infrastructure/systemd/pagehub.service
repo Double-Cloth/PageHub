@@ -1,0 +1,15 @@
+[Unit]
+Description=PageHub platform recovery
+Requires=docker.service
+After=docker.service network-online.target pagehub-runner.service pagehub-manager.service
+Wants=network-online.target pagehub-runner.service pagehub-manager.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+EnvironmentFile=/srv/pagehub/config/pagehub.env
+ExecStart=/usr/bin/bash /srv/pagehub/current/restart.sh --boot
+TimeoutStartSec=300
+
+[Install]
+WantedBy=multi-user.target

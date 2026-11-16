@@ -1,0 +1,40 @@
+name: Release
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: write
+jobs:
+  package:
+    strategy:
+      matrix:
+        arch: [amd64, arm64]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: test "$GITHUB_REF_NAME" = "v$(cat VERSION)"
+      - run: npm ci && npm run build
+        working-directory: frontend
+      - run: |
+          mkdir -p bin
+          cd backend
+          GOOS=linux GOARCH=${{ matrix.arch }} CGO_ENABLED=0 go build -trimpath -o ../bin/pagehub-runner ./cmd/runner
+          GOOS=linux GOARCH=${{ matrix.arch }} CGO_ENABLED=0 go build -trimpath -o ../bin/pagehub-manager ./cmd/manager
+      - run: |
+          if [ '${{ matrix.arch }}' = amd64 ]; then bash scripts/package-release.sh source; fi
+          mkdir -p dist
+          tar -czf dist/pagehub-$(cat VERSION)-binaries-${{ matrix.arch }}.tar.gz bin frontend/dist
+          sha256sum dist/*binaries-${{ matrix.arch }}.tar.gz > dist/pagehub-binaries-${{ matrix.arch }}.sha256
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*binaries*.tar.gz
+            dist/*source*.tar.gz
+            dist/*.sha256

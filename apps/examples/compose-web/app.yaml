@@ -1,0 +1,22 @@
+schema_version: 1
+id: compose-demo
+name: Compose 示例
+description: 独立 Go HTTP 服务与私有 Redis 持久数据库。
+version: 1.0.0
+kind: compose
+path: /compose-demo/
+startup: always
+visibility: public
+route_mode: strip_prefix
+source:
+  compose_file: compose.yaml
+  web_service: web
+  container_port: 3000
+health:
+  path: /healthz
+  interval_seconds: 15
+  timeout_seconds: 5
+lifecycle:
+  allow: [start, stop, restart]
+backup:
+  mode: volume

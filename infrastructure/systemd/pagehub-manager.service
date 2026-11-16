@@ -1,0 +1,27 @@
+[Unit]
+Description=PageHub manager API
+After=pagehub-runner.service
+Wants=pagehub-runner.service
+
+[Service]
+Type=simple
+User=pagehub
+Group=pagehub
+UMask=0027
+EnvironmentFile=/srv/pagehub/config/pagehub.env
+ExecStart=/srv/pagehub/current/bin/pagehub-manager
+RuntimeDirectory=pagehub-public
+RuntimeDirectoryMode=0755
+RuntimeDirectoryPreserve=yes
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=200
+ProtectSystem=strict
+ReadWritePaths=/srv/pagehub/state/manager /run/pagehub-public
+PrivateTmp=yes
+ProtectHome=yes
+NoNewPrivileges=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,24 @@
+name: pagehub-gateway
+services:
+  gateway:
+    image: ${PAGEHUB_CADDY_IMAGE:-caddy:2.10.2-alpine}
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${PAGEHUB_GATEWAY_PORT:-8080}:80"
+    volumes:
+      - ${PAGEHUB_ROOT:-/srv/pagehub}/gateway:/etc/caddy:ro
+      - ${PAGEHUB_ROOT:-/srv/pagehub}/apps:/apps:ro
+      - /run/pagehub-public:/run/pagehub-public:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks:
+      - ingress
+    security_opt:
+      - no-new-privileges:true
+networks:
+  ingress:
+    external: true
+    name: pagehub-ingress
+volumes:
+  caddy-data:
+  caddy-config:

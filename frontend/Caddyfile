@@ -1,0 +1,6 @@
+:80 {
+    root * /srv
+    header X-Content-Type-Options nosniff
+    header Content-Security-Policy "default-src 'self'; img-src 'self' data:; style-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'"
+    file_server
+}
