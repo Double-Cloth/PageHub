@@ -9,6 +9,7 @@ python3 -c 'import sys; sys.exit(sys.version_info < (3, 11))' || die '安装需�
 command -v docker >/dev/null || bash "$PAGEHUB_SOURCE/scripts/setup-docker.sh"
 docker info >/dev/null
 docker compose version >/dev/null
+mkdir -p "$PAGEHUB_ROOT"
 available="$(df -Pk "$PAGEHUB_ROOT" | awk 'NR==2 {print $4}')"
 [[ "$available" -ge 2097152 ]] || die '安装目录至少需要 2 GiB 可用空间'
 if [[ -n "$(ss -H -ltn "sport = :$PAGEHUB_GATEWAY_PORT")" ]]; then

@@ -119,6 +119,9 @@ func (m Manifest) Validate(devImages bool) error {
 		return errors.New("backup.mode 无效")
 	}
 	s := m.Source
+	if m.Kind != "external" && m.Kind != "external-compose" && (s.Upstream != "" || s.ComposeDirectory != "" || s.Project != "" || s.ConfigSHA256 != "" || len(s.Approvals) > 0) {
+		return errors.New("标准包不能声明外部接入字段")
+	}
 	switch m.Kind {
 	case "external", "external-compose":
 		u, err := url.Parse(s.Upstream)

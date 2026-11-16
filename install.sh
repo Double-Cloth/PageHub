@@ -2,6 +2,11 @@
 set -Eeuo pipefail
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/scripts/lib/common.sh"
 require_root
+if [[ -f "$PAGEHUB_SOURCE/offline.env" ]]; then
+  set -a
+  source "$PAGEHUB_SOURCE/offline.env"
+  set +a
+fi
 platform_lock
 if [[ -f "$PAGEHUB_ROOT/state/install-state.json" ]]; then
   log '检测到已安装平台，保留配置与凭据并执行恢复'

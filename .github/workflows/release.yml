@@ -5,11 +5,24 @@ on:
 permissions:
   contents: write
 jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: test "$GITHUB_REF_NAME" = "v$(cat VERSION)"
+      - run: gh release create "$GITHUB_REF_NAME" --draft --title "PageHub $GITHUB_REF_NAME" --generate-notes
+        env:
+          GH_TOKEN: ${{ github.token }}
   package:
+    needs: prepare
     strategy:
       matrix:
-        arch: [amd64, arm64]
-    runs-on: ubuntu-latest
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -19,22 +32,63 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: test "$GITHUB_REF_NAME" = "v$(cat VERSION)"
-      - run: npm ci && npm run build
+      - run: npm ci && npm test && npm run build
         working-directory: frontend
+      - run: go test ./... && go vet ./...
+        working-directory: backend
       - run: |
           mkdir -p bin
           cd backend
-          GOOS=linux GOARCH=${{ matrix.arch }} CGO_ENABLED=0 go build -trimpath -o ../bin/pagehub-runner ./cmd/runner
-          GOOS=linux GOARCH=${{ matrix.arch }} CGO_ENABLED=0 go build -trimpath -o ../bin/pagehub-manager ./cmd/manager
+          CGO_ENABLED=0 go build -trimpath -o ../bin/pagehub-runner ./cmd/runner
+          CGO_ENABLED=0 go build -trimpath -o ../bin/pagehub-manager ./cmd/manager
       - run: |
+          export PAGEHUB_ROOT=/tmp/pagehub-release
+          mkdir -p "$PAGEHUB_ROOT/config"
+          printf '{"schema_version":1,"apps":[]}\n' > "$PAGEHUB_ROOT/config/apps.yaml"
+          docker pull caddy:2.10.2-alpine
+          docker build -t pagehub-portal:0.1.0 -f infrastructure/portal/Dockerfile .
+          bash scripts/package-release.sh offline
           if [ '${{ matrix.arch }}' = amd64 ]; then bash scripts/package-release.sh source; fi
-          mkdir -p dist
-          tar -czf dist/pagehub-$(cat VERSION)-binaries-${{ matrix.arch }}.tar.gz bin frontend/dist
-          sha256sum dist/*binaries-${{ matrix.arch }}.tar.gz > dist/pagehub-binaries-${{ matrix.arch }}.sha256
-      - uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            dist/*binaries*.tar.gz
-            dist/*source*.tar.gz
-            dist/*.sha256
+          gh release upload "$GITHUB_REF_NAME" dist/*.tar.gz dist/*.sha256
+        env:
+          GH_TOKEN: ${{ github.token }}
+  verify:
+    needs: package
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            mode: offline
+            runner: ubuntu-24.04
+          - arch: arm64
+            mode: offline
+            runner: ubuntu-24.04-arm
+          - arch: amd64
+            mode: source
+            runner: ubuntu-24.04
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: 安装实际 Release 附件
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p /tmp/release-attachment /tmp/release-install
+          archive="pagehub-$(cat VERSION)-${{ matrix.mode }}-${{ matrix.arch }}.tar.gz"
+          gh release download "$GITHUB_REF_NAME" --pattern "$archive*" --dir /tmp/release-attachment
+          cd /tmp/release-attachment
+          sha256sum -c "$archive.sha256"
+          tar -xzf "$archive" -C /tmp/release-install
+          sudo env PAGEHUB_ROOT=/srv/pagehub PAGEHUB_IMPORT_BUNDLED=false bash /tmp/release-install/install.sh
+          sudo bash /srv/pagehub/current/restart.sh --check
+          curl --fail http://127.0.0.1:8080/healthz
+          curl --fail http://127.0.0.1:8080/ | grep -q '<html'
+          sudo bash /srv/pagehub/current/pagehub.sh doctor
+  publish:
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: gh release edit "$GITHUB_REF_NAME" --draft=false
+        env:
+          GH_TOKEN: ${{ github.token }}

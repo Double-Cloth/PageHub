@@ -35,3 +35,5 @@ sudo bash pagehub.sh rollback my-app --maintenance-receipt /srv/approved/rollbac
 停止应用并检查本机备份收据的全部 SHA-256，记录现有卷名，再对相同命名卷恢复。恢复会覆盖数据，必须先保留当前卷快照并使用独立维护窗口。不要执行带 `-v` 的 compose down。恢复完成后先验证数据库，再恢复 Web 服务并探测公开路径。
 
 平台更新保存 config/secrets 快照和旧 release 路径。`platform-rollback` 切换旧 current 并重启控制平面与入口，应用数据保存在独立稳定目录。
+
+自动演练及恢复命令详见 [恢复流程](RESTORE.md)。
