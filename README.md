@@ -15,15 +15,12 @@ sudo bash /srv/pagehub/current/restart.sh
 sudo bash /srv/pagehub/current/restart.sh --check
 ```
 
-## 管理
+## 状态、诊断与日志
 
 ```bash
 ssh -L 8091:127.0.0.1:8091 user@server
 sudo bash /srv/pagehub/current/pagehub.sh status
 sudo bash /srv/pagehub/current/pagehub.sh doctor
-sudo bash /srv/pagehub/current/pagehub.sh app start my-app
-sudo bash /srv/pagehub/current/pagehub.sh app stop my-app
-sudo bash /srv/pagehub/current/pagehub.sh app restart my-app
 sudo bash /srv/pagehub/current/pagehub.sh logs gateway
 sudo bash /srv/pagehub/current/pagehub.sh logs my-app
 ```
@@ -40,7 +37,17 @@ sudo bash pagehub.sh add-app /srv/uploads/my-app.zip
 sudo bash pagehub.sh add-app /srv/uploads/my-app.zip --approved-sha256 <审核后的64位摘要>
 ```
 
-## 维护
+## 生命周期与卸载
+
+```bash
+sudo bash pagehub.sh app start my-app
+sudo bash pagehub.sh app stop my-app
+sudo bash pagehub.sh app restart my-app
+sudo bash pagehub.sh remove-app my-app
+sudo bash pagehub.sh gateway reload
+```
+
+## 备份、恢复与升级
 
 ```bash
 sudo bash pagehub.sh backup my-app
@@ -49,7 +56,7 @@ sudo bash pagehub.sh restore my-app /srv/pagehub/backups/my-app/<timestamp> --dr
 sudo bash pagehub.sh app stop my-app
 sudo bash pagehub.sh restore my-app /srv/pagehub/backups/my-app/<timestamp>
 sudo bash pagehub.sh app start my-app
-sudo bash pagehub.sh update my-app /srv/uploads/my-app-v2.zip
+sudo bash pagehub.sh update my-app /srv/uploads/my-app-v2.zip --maintenance-receipt /srv/approved/maintenance.json
 sudo bash pagehub.sh rollback static-demo
 sudo bash pagehub.sh remove-app my-app
 sudo bash pagehub.sh gateway reload
@@ -73,13 +80,6 @@ cd backend
 go test ./...
 go vet ./...
 go run ./cmd/manager
-```
-
-## 发布打包
-
-```bash
-bash scripts/package-release.sh source
-bash scripts/package-release.sh offline
 ```
 
 ## 离线打包

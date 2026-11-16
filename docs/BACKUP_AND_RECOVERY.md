@@ -37,3 +37,5 @@ sudo bash pagehub.sh rollback my-app --maintenance-receipt /srv/approved/rollbac
 平台更新保存 config/secrets 快照和旧 release 路径。`platform-rollback` 切换旧 current 并重启控制平面与入口，应用数据保存在独立稳定目录。
 
 自动演练及恢复命令详见 [恢复流程](RESTORE.md)。
+
+对于 backup.mode=volume 的应用，更新和回滚还会读取备份同目录的 verification.json，并重新核对归档摘要。维护声明必须绑定当前登记版本的实际演练结果，单独填写 restore_verified=true 无法通过。

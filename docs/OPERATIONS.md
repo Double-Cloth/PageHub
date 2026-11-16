@@ -124,3 +124,5 @@ bash scripts/package-release.sh offline
 - [安全](docs/SECURITY.md)
 - [备份恢复](docs/BACKUP_AND_RECOVERY.md)
 - [排障](docs/TROUBLESHOOTING.md)
+
+独立 UI 开发使用 `npm --prefix frontend run dev:ui`。独立项目接入详见 [外部接入](EXTERNAL_APPS.md)，自动恢复演练和正式恢复详见 [恢复流程](RESTORE.md)。当前卷升级及回滚会核对程序生成的 verification.json 和备份内容摘要。
