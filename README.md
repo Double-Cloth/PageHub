@@ -22,6 +22,9 @@ ssh -L 8091:127.0.0.1:8091 user@server
 sudo bash /srv/pagehub/current/pagehub.sh status
 sudo bash /srv/pagehub/current/pagehub.sh doctor
 sudo bash /srv/pagehub/current/pagehub.sh logs gateway
+sudo bash /srv/pagehub/current/pagehub.sh logs portal
+sudo bash /srv/pagehub/current/pagehub.sh logs manager
+sudo bash /srv/pagehub/current/pagehub.sh logs runner
 sudo bash /srv/pagehub/current/pagehub.sh logs my-app
 ```
 
@@ -35,6 +38,8 @@ sudo bash pagehub.sh add-app /srv/uploads/my-app.zip
 
 ```bash
 sudo bash pagehub.sh add-app /srv/uploads/my-app.zip --approved-sha256 <审核后的64位摘要>
+sudo bash pagehub.sh adopt-app /srv/uploads/my-app.zip --project-name existing-project --dry-run
+sudo bash pagehub.sh adopt-app /srv/uploads/my-app.zip --project-name existing-project
 ```
 
 ## 生命周期与卸载
@@ -58,8 +63,7 @@ sudo bash pagehub.sh restore my-app /srv/pagehub/backups/my-app/<timestamp>
 sudo bash pagehub.sh app start my-app
 sudo bash pagehub.sh update my-app /srv/uploads/my-app-v2.zip --maintenance-receipt /srv/approved/maintenance.json
 sudo bash pagehub.sh rollback static-demo
-sudo bash pagehub.sh remove-app my-app
-sudo bash pagehub.sh gateway reload
+sudo bash pagehub.sh rollback my-app --maintenance-receipt /srv/approved/rollback.json
 sudo bash pagehub.sh platform-update /srv/uploads/pagehub-new
 sudo bash pagehub.sh platform-rollback
 ```
