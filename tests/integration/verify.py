@@ -236,6 +236,8 @@ runner('update', 'compose-demo', str(new_zip), '--maintenance-receipt', str(main
 assert request('/compose-demo/api/value') == b'persistent-test-value'
 updated = next(app for app in json.loads((root / 'config/apps.yaml').read_text())['apps'] if app['manifest']['id'] == 'compose-demo')
 assert updated['manifest']['version'] == '1.0.1'
+backup_dir = pathlib.Path(runner('backup', 'compose-demo').strip())
+runner('backup', 'verify', 'compose-demo', str(backup_dir))
 maintenance.write_text(json.dumps({'id': 'compose-demo', 'digest': updated['digest'], 'backup': str(backup_dir / 'receipt.json'), 'restore_verified': True, 'expires_at': '2099-01-01T00:00:00Z'}))
 runner('rollback', 'compose-demo', '--maintenance-receipt', str(maintenance))
 assert request('/compose-demo/api/value') == b'persistent-test-value'

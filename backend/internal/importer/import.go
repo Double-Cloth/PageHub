@@ -161,6 +161,11 @@ func (i Importer) Import(ctx context.Context, archive string, opts Options) (pla
 			return plan, err
 		}
 	}
+	if old != nil && old.Manifest.Backup.Mode == "volume" {
+		if err = CheckBackupVerification(opts.MaintenanceReceipt, m.ID, old.Digest); err != nil {
+			return plan, err
+		}
+	}
 	a.Directory = i.Store.Path("apps", m.ID, "releases", digest)
 	if _, err = os.Stat(a.Directory); err == nil {
 		return plan, errors.New("该版本目录已存在，请检查失败记录或执行 rollback")

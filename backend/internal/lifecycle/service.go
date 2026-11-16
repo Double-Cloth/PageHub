@@ -203,6 +203,11 @@ func (s Service) Rollback(ctx context.Context, id, receipt string) (err error) {
 		return err
 	}
 	oldRegistry := registry.Registry{SchemaVersion: r.SchemaVersion, Apps: append([]registry.Record{}, r.Apps...)}
+	if a.Manifest.Backup.Mode == "volume" {
+		if err = importer.CheckBackupVerification(receipt, id, a.Digest); err != nil {
+			return err
+		}
+	}
 	previous := *a.Previous
 	if err = s.Store.Validate(previous); err != nil {
 		return err
