@@ -41,9 +41,10 @@ const loginMethod = ref("password");
 const showCatalog = ref(false);
 const score = ref(0);
 const speed = ref(8);
-const resized = ref(false);
 const desktop = ref(false);
-const sources = ref<{ x: number; y: number; size: number }[]>([]);
+const sources = ref<
+  { x: number; y: number; width: number; height: number; color: string }[]
+>([]);
 const isGame = computed(() => mode.value.startsWith("GAME_"));
 const inProjects = computed(
   () =>
@@ -267,8 +268,6 @@ function avatarClick() {
 async function openProjects() {
   if (mode.value !== "HOME_AUTO") return;
   panel.value = "";
-  sources.value =
-    world.value?.sources(Math.min(visibleApps.value.length, 6)) ?? [];
   mode.value = "TRANSITION_TO_PROJECTS";
   history.pushState({ pagehub: "projects" }, "", "#projects");
   transition?.kill();
@@ -283,6 +282,19 @@ async function openProjects() {
     duration: 0.22,
     ease: "power2.in",
   });
+}
+function navigateHome(event: MouseEvent) {
+  if (
+    adminMode ||
+    event.ctrlKey ||
+    event.metaKey ||
+    event.shiftKey ||
+    event.altKey
+  )
+    return;
+  event.preventDefault();
+  if (mode.value === "HOME_AUTO") panel.value = "";
+  else void home();
 }
 async function home(fromHistory = false) {
   if (
@@ -305,8 +317,7 @@ async function home(fromHistory = false) {
   }
   mode.value = "TRANSITION_TO_HOME";
   panel.value = "";
-  resized.value = false;
-  world.value?.reset();
+  world.value?.automatic();
   transition = gsap.timeline({
     onComplete: () => {
       mode.value = "HOME_AUTO";
@@ -494,11 +505,10 @@ onUnmounted(() => {
       ref="world"
       :active="!inProjects && mode !== 'TRANSITION_TO_HOME'"
       @change="updateGame"
-      @resize="resized = true"
     />
     <div ref="flights" class="danmaku-layer" aria-hidden="true"></div>
     <header class="site-header">
-      <a class="brand" href="/" aria-label="PageHub 首页"
+      <a class="brand" href="/" aria-label="PageHub 首页" @click="navigateHome"
         ><span class="brand-mark"
           ><span></span><span></span><span></span><span></span></span
         >PageHub<span class="brand-divider"></span
@@ -557,6 +567,7 @@ onUnmounted(() => {
       ref="universe"
       :apps="visibleApps"
       :sources="sources"
+      @prepare="sources = world?.sources($event) ?? []"
       @close="home()"
     />
     <section v-if="isGame" class="game-interface" aria-label="桌面贪吃蛇">
@@ -571,7 +582,7 @@ onUnmounted(() => {
         </div>
         <button
           class="button"
-          :disabled="resized || mode === 'GAME_DEAD' || mode === 'GAME_WON'"
+          :disabled="mode === 'GAME_DEAD' || mode === 'GAME_WON'"
           @click="world?.pause()"
         >
           <Icon
@@ -585,37 +596,22 @@ onUnmounted(() => {
       <div v-if="mode !== 'GAME_RUNNING'" class="game-result">
         <h2>
           {{
-            resized
-              ? "窗口尺寸已改变"
-              : mode === "GAME_DEAD"
-                ? "游戏结束"
-                : mode === "GAME_WON"
-                  ? "已通关"
-                  : "稍作停留。"
+            mode === "GAME_DEAD"
+              ? "游戏结束"
+              : mode === "GAME_WON"
+                ? "已通关"
+                : "稍作停留。"
           }}
         </h2>
-        <p>
-          {{
-            resized
-              ? "以新尺寸重新开始，或返回自动首页。"
-              : `当前局得分 ${score}`
-          }}
-        </p>
+        <p>当前局得分 {{ score }}</p>
         <div>
           <button
-            v-if="mode === 'GAME_PAUSED' && !resized"
+            v-if="mode === 'GAME_PAUSED'"
             class="button primary"
             @click="world?.pause()"
           >
             继续游戏<Icon name="play" :size="16" /></button
-          ><button
-            class="button"
-            @click="
-              resized = false;
-              world?.reset(true);
-            "
-          >
-            重新开始</button
+          ><button class="button" @click="world?.reset(true)">重新开始</button
           ><button class="text-button" @click="home()">返回首页</button>
         </div>
       </div>

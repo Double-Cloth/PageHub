@@ -30,8 +30,9 @@ export class SnakeEngine {
   recycling = false;
   private turned = false;
   private steps = 0;
-  readonly route: Cell[];
-  readonly indices: Map<string, number>;
+  route: Cell[];
+  indices: Map<string, number>;
+  private ordered = true;
 
   constructor(
     public columns: number,
@@ -67,16 +68,132 @@ export class SnakeEngine {
     this.speed = 8;
     this.recycling = false;
     this.turned = false;
+    this.ordered = true;
     this.setDirection(this.route[(head + 1) % this.route.length]!);
     this.placeFood();
   }
 
   manual(direction: Direction) {
     this.mode = "manual";
-    this.score = 0;
-    this.speed = 8;
+    this.ordered = false;
     this.turned = false;
     this.turn(direction);
+  }
+
+  automatic() {
+    this.mode = "auto";
+    this.turned = false;
+    this.ordered = this.isOrdered();
+  }
+
+  // 尺寸改变只平移已有蛇身，保留形状、长度、分数和游戏状态。
+  resize(columns: number, rows: number) {
+    const points = this.food ? [...this.cells, this.food] : this.cells;
+    const xs = points.map((cell) => cell.x);
+    const ys = points.map((cell) => cell.y);
+    const minX = Math.min(...xs);
+    const minY = Math.min(...ys);
+    columns = Math.max(4, columns, Math.max(...xs) - minX + 1);
+    columns += columns % 2;
+    rows = Math.max(4, rows, Math.max(...ys) - minY + 1);
+    const dx = Math.min(0, columns - 1 - Math.max(...xs)) - Math.min(0, minX);
+    const dy = Math.min(0, rows - 1 - Math.max(...ys)) - Math.min(0, minY);
+    this.columns = columns;
+    this.rows = rows;
+    this.cells = this.cells.map((cell) => ({ x: cell.x + dx, y: cell.y + dy }));
+    if (this.food) this.food = { x: this.food.x + dx, y: this.food.y + dy };
+    this.route = hamiltonian(columns, rows);
+    this.indices = new Map(
+      this.route.map((cell, index) => [`${cell.x},${cell.y}`, index]),
+    );
+    if (this.food && !this.indices.has(`${this.food.x},${this.food.y}`))
+      this.placeFood();
+    this.ordered = this.isOrdered();
+  }
+
+  private isOrdered() {
+    let distance = 0;
+    for (let i = this.cells.length - 1; i > 0; i--) {
+      const tail = this.indices.get(`${this.cells[i]!.x},${this.cells[i]!.y}`)!;
+      const head = this.indices.get(
+        `${this.cells[i - 1]!.x},${this.cells[i - 1]!.y}`,
+      )!;
+      distance += (head - tail + this.route.length) % this.route.length;
+    }
+    return distance < this.route.length;
+  }
+
+  private path(start: Cell, target: Cell, body: Cell[]) {
+    const key = (cell: Cell) => cell.y * this.columns + cell.x;
+    const blocked = new Set(body.map(key));
+    blocked.delete(key(start));
+    blocked.delete(key(target));
+    const queue = [start];
+    const parents = new Map<number, Cell | null>([[key(start), null]]);
+    for (let cursor = 0; cursor < queue.length; cursor++) {
+      const point = queue[cursor]!;
+      if (same(point, target)) {
+        const path: Cell[] = [];
+        let current: Cell | null = point;
+        while (current && !same(current, start)) {
+          path.unshift(current);
+          current = parents.get(key(current))!;
+        }
+        return path;
+      }
+      for (const vector of Object.values(vectors)) {
+        const next = { x: point.x + vector.x, y: point.y + vector.y };
+        if (
+          next.x < 0 ||
+          next.x >= this.columns ||
+          next.y < 0 ||
+          next.y >= this.rows ||
+          blocked.has(key(next)) ||
+          parents.has(key(next))
+        )
+          continue;
+        parents.set(key(next), point);
+        queue.push(next);
+      }
+    }
+    return [];
+  }
+
+  // 手动接管和缩放后，先沿可达尾部的安全路径行进，再接回闭合回路。
+  private freeNext(head: Cell): Cell {
+    if (this.food) {
+      const path = this.path(head, this.food, this.cells.slice(0, -1));
+      if (path.length) {
+        const future = this.cells.map((cell) => ({ ...cell }));
+        for (const point of path) {
+          future.unshift(point);
+          if (!same(point, this.food) || this.recycling) future.pop();
+        }
+        if (
+          this.path(future[0]!, future[future.length - 1]!, future.slice(0, -1))
+            .length
+        )
+          return path[0]!;
+      }
+    }
+    const tail = this.path(
+      head,
+      this.cells[this.cells.length - 1]!,
+      this.cells.slice(0, -1),
+    );
+    if (tail.length) return tail[0]!;
+    return (
+      Object.values(vectors)
+        .map((vector) => ({ x: head.x + vector.x, y: head.y + vector.y }))
+        .find(
+          (point) =>
+            point.x >= 0 &&
+            point.x < this.columns &&
+            point.y >= 0 &&
+            point.y < this.rows &&
+            !this.cells.slice(0, -1).some((cell) => same(cell, point)),
+        ) ?? head
+    );
   }
 
   turn(direction: Direction) {
@@ -111,6 +228,10 @@ export class SnakeEngine {
   }
 
   private autoNext(head: Cell): Cell {
+    if (!this.ordered) {
+      this.ordered = this.isOrdered();
+      if (!this.ordered) return this.freeNext(head);
+    }
     const capacity = this.route.length;
     const index = this.indices.get(`${head.x},${head.y}`)!;
     const fallback = this.route[(index + 1) % capacity]!;

@@ -10,9 +10,15 @@ import { projectLayout } from "./project-layout";
 
 const props = defineProps<{
   apps: AppEntry[];
-  sources: { x: number; y: number; size: number }[];
+  sources: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    color: string;
+  }[];
 }>();
-const emit = defineEmits<{ close: [] }>();
+const emit = defineEmits<{ close: []; prepare: [count: number] }>();
 const root = ref<HTMLElement>();
 const plane = ref<HTMLElement>();
 const query = ref("");
@@ -103,7 +109,7 @@ function reset() {
 function changeScale(delta: number) {
   const next = Math.max(0.6, Math.min(2.2, camera.k + delta));
   const centerX = width.value / 2;
-  const centerY = height.value * 0.52;
+  const centerY = layout.value.centerY;
   move(
     centerX + ((camera.x - centerX) * next) / camera.k,
     centerY + ((camera.y - centerY) * next) / camera.k,
@@ -133,7 +139,7 @@ async function leave() {
   await nextTick();
   const tiles = Array.from(
     root.value.querySelectorAll<HTMLElement>(".project-tile"),
-  ).slice(0, 6);
+  ).slice(0, layout.value.initialCount);
   await new Promise<void>((resolve) => {
     animation = gsap.timeline({ onComplete: resolve });
     tiles.forEach((tile, index) => {
@@ -149,8 +155,11 @@ async function leave() {
         {
           x: source ? source.x - rect.x : 0,
           y: source ? source.y - rect.y : 0,
-          scale: source ? source.size / rect.width : 0.1,
-          opacity: 0,
+          scaleX: source ? source.width / rect.width : 0.1,
+          scaleY: source ? source.height / rect.height : 0.1,
+          backgroundColor: source?.color,
+          borderColor: source?.color,
+          opacity: 1,
           duration: reduced ? 0 : 0.5,
           ease: "power3.inOut",
         },
@@ -174,8 +183,12 @@ watch(
 onMounted(async () => {
   select(root.value!).call(behavior);
   observer = new ResizeObserver((entries) => {
-    width.value = entries[0]!.contentRect.width;
-    height.value = entries[0]!.contentRect.height;
+    const bounds = entries[0]!.contentRect;
+    const changed =
+      width.value !== bounds.width || height.value !== bounds.height;
+    width.value = bounds.width;
+    height.value = bounds.height;
+    if (changed) emit("prepare", layout.value.initialCount);
     const boundX =
       Math.max(
         width.value,
@@ -194,6 +207,10 @@ onMounted(async () => {
     ]);
   });
   observer.observe(root.value!);
+  const bounds = root.value!.getBoundingClientRect();
+  width.value = bounds.width;
+  height.value = bounds.height;
+  emit("prepare", layout.value.initialCount);
   await nextTick();
   const tiles = root.value!.querySelectorAll<HTMLElement>(".project-tile");
   animation = gsap.timeline({
@@ -202,7 +219,7 @@ onMounted(async () => {
     },
   });
   Array.from(tiles)
-    .slice(0, 6)
+    .slice(0, layout.value.initialCount)
     .forEach((tile, index) => {
       const source = props.sources[index];
       const rect = tile.getBoundingClientRect();
@@ -211,8 +228,11 @@ onMounted(async () => {
         {
           x: source ? source.x - rect.x : 0,
           y: source ? source.y - rect.y : 0,
-          scale: source ? source.size / rect.width : 0.1,
-          opacity: 0.5,
+          scaleX: source ? source.width / rect.width : 0.1,
+          scaleY: source ? source.height / rect.height : 0.1,
+          backgroundColor: source?.color,
+          borderColor: source?.color,
+          opacity: 1,
           duration: reduced ? 0 : 0.7,
           ease: "power3.inOut",
         },
@@ -275,7 +295,7 @@ onUnmounted(() => {
           width: `${layout.size}px`,
           height: `${layout.size}px`,
           left: `${width / 2 + layout.points[index]!.x - layout.size / 2}px`,
-          top: `${height * 0.52 + layout.points[index]!.y - layout.size / 2}px`,
+          top: `${layout.centerY + layout.points[index]!.y - layout.size / 2}px`,
         }"
         @click="visit"
         @dragstart.prevent
@@ -313,8 +333,8 @@ onUnmounted(() => {
     </div>
     <div class="universe-bottom" @pointerdown.stop @touchstart.stop @wheel.stop>
       <span class="pan-hint"
-        >拖动探索<span v-if="apps.length > 6">
-          · 还有 {{ apps.length - 6 }} 个项目在周围</span
+        >拖动探索<span v-if="apps.length > layout.initialCount">
+          · 还有 {{ apps.length - layout.initialCount }} 个项目在周围</span
         ></span
       >
       <div class="zoom-controls">

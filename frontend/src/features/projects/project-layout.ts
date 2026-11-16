@@ -1,24 +1,49 @@
 export function projectLayout(count: number, width: number, height: number) {
-  const columns = width < 600 && height > width ? 2 : 3;
-  const rows = Math.ceil(Math.min(count, 6) / columns);
+  const gap = 18;
+  const availableWidth = Math.max(1, width - 48);
+  const topInset = width < 600 ? 128 : 100;
+  const bottomInset = 68;
+  const availableHeight = Math.max(1, height - topInset - bottomInset);
+  const centerY = topInset + availableHeight / 2;
+  const preferredSize = width < 600 ? 120 : 176;
+  const columnCapacity = Math.max(
+    1,
+    Math.floor((availableWidth + gap) / (preferredSize + gap)),
+  );
+  const rowCapacity = Math.max(
+    1,
+    Math.floor((availableHeight + gap) / (preferredSize + gap)),
+  );
+  const initialCount = Math.min(count, columnCapacity * rowCapacity);
+  const columns = Math.max(
+    1,
+    Math.min(
+      columnCapacity,
+      Math.ceil(Math.sqrt((initialCount * availableWidth) / availableHeight)),
+    ),
+  );
+  const rows = Math.max(1, Math.ceil(initialCount / columns));
   const size = Math.max(
-    66,
+    32,
     Math.min(
       208,
-      (width - 64) / columns - 18,
-      (height - 188) / Math.max(rows, 1) - 18,
+      (availableWidth - (columns - 1) * gap) / columns,
+      (availableHeight - (rows - 1) * gap) / rows,
     ),
   );
   const pitch = size + Math.max(12, Math.min(22, size * 0.1));
   const points: { x: number; y: number }[] = [];
-  for (let i = 0; i < Math.min(count, 6); i++) {
-    const items = Math.min(columns, count - Math.floor(i / columns) * columns);
+  for (let i = 0; i < initialCount; i++) {
+    const items = Math.min(
+      columns,
+      initialCount - Math.floor(i / columns) * columns,
+    );
     points.push({
       x: ((i % columns) - (items - 1) / 2) * pitch,
       y: (Math.floor(i / columns) - (rows - 1) / 2) * pitch,
     });
   }
-  // 外围按环扩展，初始六项始终位于中心，追加项目不扰动已有顺序。
+  // 首屏容量随视口变化，其余项目按确定顺序在外围扩展。
   let ring = 1;
   while (points.length < count) {
     const radiusX = width / 2 + pitch * (ring - 0.2);
@@ -34,5 +59,5 @@ export function projectLayout(count: number, width: number, height: number) {
     }
     ring++;
   }
-  return { size, points };
+  return { size, points, initialCount, centerY };
 }

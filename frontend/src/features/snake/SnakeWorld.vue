@@ -6,7 +6,6 @@ import { SnakeEngine, type Direction } from "./engine";
 const props = defineProps<{ active: boolean }>();
 const emit = defineEmits<{
   change: [mode: string, score: number, speed: number];
-  resize: [];
 }>();
 const host = ref<HTMLDivElement>();
 let engine: SnakeEngine;
@@ -14,10 +13,11 @@ let renderer: import("pixi.js").Application | undefined;
 let graphics: import("pixi.js").Graphics | undefined;
 let grid: import("pixi.js").Graphics | undefined;
 let disposed = false;
-let resizeTimer: ReturnType<typeof setTimeout>;
+let resizeFrame = 0;
 let last = 0;
 let accumulator = 0;
-let cell = 22;
+let cellWidth = 22;
+let cellHeight = 22;
 let observer: ResizeObserver;
 let colorPhase = 0;
 const colors = { tile: "#171d22", snake: "#2b363f" };
@@ -30,51 +30,77 @@ function resize() {
   const width = host.value.clientWidth;
   const height = host.value.clientHeight;
   if (width < 1 || height < 1) return;
-  const columns = Math.max(
-    4,
-    Math.round(Math.sqrt((width * 3200) / height) / 2) * 2,
-  );
-  cell = width / columns;
-  const rows = Math.max(4, Math.floor(height / cell));
-  if (!engine || engine.columns !== columns || engine.rows !== rows) {
-    const manual = engine && engine.mode !== "auto";
-    colorPhase = engine?.colorPhase ?? colorPhase;
-    engine = new SnakeEngine(columns, rows);
-    engine.colorPhase = colorPhase;
-    if (manual) {
-      engine.mode = "paused";
-      emit("resize");
-    }
-    report();
+  let targetCell = Math.sqrt((width * height) / 3200);
+  if (engine) {
+    const points = engine.food ? [...engine.cells, engine.food] : engine.cells;
+    const xs = points.map((point) => point.x);
+    const ys = points.map((point) => point.y);
+    const spanX = Math.max(...xs) - Math.min(...xs) + 1;
+    const spanY = Math.max(...ys) - Math.min(...ys) + 1;
+    // 缩窄窗口时等比缩小网格，确保整条蛇仍在合法棋盘内。
+    targetCell = Math.min(
+      targetCell,
+      width / (spanX + (spanX % 2)),
+      height / spanY,
+    );
   }
+  const columns = Math.max(4, Math.floor(width / targetCell / 2) * 2);
+  const rows = Math.max(4, Math.floor(height / targetCell));
+  if (!engine) engine = new SnakeEngine(columns, rows);
+  else if (engine.columns !== columns || engine.rows !== rows)
+    engine.resize(columns, rows);
+  cellWidth = width / engine.columns;
+  cellHeight = height / engine.rows;
+  report();
   renderer?.renderer.resize(width, height);
   drawGrid();
   draw();
+  renderer?.render();
 }
 function drawGrid() {
   if (!grid || !renderer) return;
   grid.clear();
-  const gap = Math.max(1.3, cell * 0.085);
-  for (let y = 0; y < Math.ceil(renderer.screen.height / cell); y++) {
+  const gap = Math.max(0.7, Math.min(cellWidth, cellHeight) * 0.085);
+  for (let y = 0; y < engine.rows; y++) {
     for (let x = 0; x < engine.columns; x++)
-      grid.rect(x * cell, y * cell, cell - gap, cell - gap);
+      grid.rect(
+        x * cellWidth,
+        y * cellHeight,
+        cellWidth - gap,
+        cellHeight - gap,
+      );
   }
   grid.fill(colors.tile);
 }
 function draw() {
   if (!graphics || !engine) return;
   graphics.clear();
-  const gap = Math.max(1.3, cell * 0.085);
+  const gap = Math.max(0.7, Math.min(cellWidth, cellHeight) * 0.085);
   for (const point of engine.cells)
-    graphics.rect(point.x * cell, point.y * cell, cell - gap, cell - gap);
+    graphics.rect(
+      point.x * cellWidth,
+      point.y * cellHeight,
+      cellWidth - gap,
+      cellHeight - gap,
+    );
   graphics.fill(colors.snake);
   const head = engine.cells[0]!;
   graphics
-    .rect(head.x * cell + 1, head.y * cell + 1, cell - gap - 2, cell - gap - 2)
+    .rect(
+      head.x * cellWidth + 0.5,
+      head.y * cellHeight + 0.5,
+      cellWidth - gap - 1,
+      cellHeight - gap - 1,
+    )
     .stroke({ color: 0x6e7b83, width: 1 });
   if (engine.food)
     graphics
-      .rect(engine.food.x * cell, engine.food.y * cell, cell - gap, cell - gap)
+      .rect(
+        engine.food.x * cellWidth,
+        engine.food.y * cellHeight,
+        cellWidth - gap,
+        cellHeight - gap,
+      )
       .fill(0xf04444);
 }
 function clock() {
@@ -82,7 +108,6 @@ function clock() {
   const elapsed = Math.min(now - last, 180);
   last = now;
   if (!engine || !props.active || document.hidden) {
-    accumulator = 0;
     return;
   }
   accumulator += elapsed;
@@ -126,35 +151,53 @@ function reset(manual = false) {
   draw();
   report();
 }
+function automatic() {
+  engine?.automatic();
+  report();
+}
 function sources(count: number) {
   if (!engine) return [];
   const occupied = new Set(
     engine.cells.map((point) => `${point.x},${point.y}`),
   );
   if (engine.food) occupied.add(`${engine.food.x},${engine.food.y}`);
+  const rect = host.value!.getBoundingClientRect();
+  const projectBounds = document
+    .querySelector(".project-universe")
+    ?.getBoundingClientRect();
+  const visibleBottom = (projectBounds?.bottom ?? rect.bottom) - rect.y;
   const available = engine.route.filter(
-    (point) => !occupied.has(`${point.x},${point.y}`),
+    (point) =>
+      !occupied.has(`${point.x},${point.y}`) &&
+      point.y * cellHeight >= 100 &&
+      (point.y + 1) * cellHeight <= visibleBottom - 48,
   );
+  const gap = Math.max(0.7, Math.min(cellWidth, cellHeight) * 0.085);
   return Array.from({ length: Math.min(count, available.length) }, () => {
     const point = available.splice(
       Math.floor(Math.random() * available.length),
       1,
     )[0]!;
-    return { x: point.x * cell, y: point.y * cell, size: cell - 2 };
+    return {
+      x: rect.x + point.x * cellWidth,
+      y: rect.y + point.y * cellHeight,
+      width: cellWidth - gap,
+      height: cellHeight - gap,
+      color: colors.tile,
+    };
   });
 }
-defineExpose({ start, turn, speed, pause, reset, sources });
+defineExpose({ start, turn, speed, pause, reset, automatic, sources });
 watch(
   () => props.active,
   () => {
     last = performance.now();
-    accumulator = 0;
   },
 );
 onMounted(async () => {
   observer = new ResizeObserver(() => {
-    clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(resize, 140);
+    cancelAnimationFrame(resizeFrame);
+    resizeFrame = requestAnimationFrame(resize);
   });
   observer.observe(host.value!);
   resize();
@@ -194,7 +237,7 @@ function render() {
 }
 onUnmounted(() => {
   disposed = true;
-  clearTimeout(resizeTimer);
+  cancelAnimationFrame(resizeFrame);
   observer?.disconnect();
   gsap.ticker.remove(clock);
   gsap.ticker.remove(render);

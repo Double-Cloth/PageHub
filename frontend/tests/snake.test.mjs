@@ -135,7 +135,7 @@ test("手动游戏禁止掉头、同一步双转，正确计算合法尾格、�
   assert.equal(engine.mode, "won");
   assert.equal(engine.score, 1);
 });
-test("0/1/5/6/7/20/100 个项目具有确定坐标和首六项布局", () => {
+test("不同视口按实际首屏容量布局，外围坐标保持确定", () => {
   for (const [width, height] of [
     [320, 497],
     [390, 773],
@@ -151,12 +151,12 @@ test("0/1/5/6/7/20/100 个项目具有确定坐标和首六项布局", () => {
         new Set(first.points.map((point) => `${point.x},${point.y}`)).size,
         count,
       );
-      first.points.slice(0, 6).forEach((point) => {
+      first.points.slice(0, first.initialCount).forEach((point) => {
         assert.ok(Math.abs(point.x) + first.size / 2 < width / 2);
         assert.ok(Math.abs(point.y) + first.size / 2 < height / 2);
       });
       first.points
-        .slice(6)
+        .slice(first.initialCount)
         .forEach((point) =>
           assert.ok(
             Math.abs(point.x) > width / 2 || Math.abs(point.y) > height / 2,
@@ -164,4 +164,84 @@ test("0/1/5/6/7/20/100 个项目具有确定坐标和首六项布局", () => {
         );
     }
   }
+});
+
+test("接管、返回自动和实时缩放均保留蛇身与游戏数据", () => {
+  const engine = new SnakeEngine(64, 40, () => 0.4);
+  for (let i = 0; i < 100; i++) engine.tick();
+  engine.speed = 11;
+  const cells = structuredClone(engine.cells);
+  const food = structuredClone(engine.food);
+  const score = engine.score;
+  const phase = engine.colorPhase;
+  engine.manual(engine.direction);
+  engine.mode = "paused";
+  engine.resize(20, 80);
+  assert.equal(engine.mode, "paused");
+  assert.equal(engine.score, score);
+  assert.equal(engine.speed, 11);
+  assert.equal(engine.colorPhase, phase);
+  assert.equal(engine.cells.length, cells.length);
+  const dx = engine.cells[0].x - cells[0].x;
+  const dy = engine.cells[0].y - cells[0].y;
+  assert.deepEqual(
+    engine.cells,
+    cells.map((cell) => ({ x: cell.x + dx, y: cell.y + dy })),
+  );
+  assert.deepEqual(engine.food, { x: food.x + dx, y: food.y + dy });
+  engine.automatic();
+  assert.equal(engine.score, score);
+  assert.equal(engine.speed, 11);
+  const before = structuredClone(engine.cells);
+  engine.automatic();
+  assert.deepEqual(engine.cells, before);
+  for (let i = 0; i < 1000; i++) {
+    engine.tick();
+    assert.equal(engine.mode, "auto");
+  }
+});
+
+test("连续改变棋盘尺寸后蛇身相邻、边界合法且自动运行不中断", () => {
+  let seed = 123;
+  const random = () => ((seed = (seed * 16807) % 2147483647) - 1) / 2147483646;
+  const engine = new SnakeEngine(64, 40, random);
+  for (let round = 0; round < 60; round++) {
+    const length = engine.cells.length;
+    const score = engine.score;
+    engine.resize(
+      4 + Math.floor(random() * 40) * 2,
+      4 + Math.floor(random() * 70),
+    );
+    assert.equal(engine.cells.length, length);
+    assert.equal(engine.score, score);
+    for (let step = 0; step < 50; step++) {
+      engine.tick();
+      assert.equal(engine.mode, "auto", `第 ${round} 次缩放，第 ${step} 步`);
+      assert.equal(
+        new Set(engine.cells.map((cell) => `${cell.x},${cell.y}`)).size,
+        engine.cells.length,
+      );
+      engine.cells.forEach((cell, index) => {
+        assert.ok(
+          cell.x >= 0 &&
+            cell.x < engine.columns &&
+            cell.y >= 0 &&
+            cell.y < engine.rows,
+        );
+        if (index)
+          assert.equal(
+            Math.abs(cell.x - engine.cells[index - 1].x) +
+              Math.abs(cell.y - engine.cells[index - 1].y),
+            1,
+          );
+      });
+    }
+  }
+});
+
+test("首屏项目数量随空间改变，支持超过六项及少量项目", () => {
+  assert.ok(projectLayout(30, 1440, 822).initialCount > 6);
+  assert.ok(projectLayout(30, 320, 490).initialCount < 6);
+  assert.equal(projectLayout(3, 1440, 822).initialCount, 3);
+  assert.equal(projectLayout(0, 1440, 822).initialCount, 0);
 });
