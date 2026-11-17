@@ -20,6 +20,11 @@ type Gateway struct {
 }
 
 type PublicApp struct {
+	DisplayReady bool     `json:"displayReady"`
+	Managed      bool     `json:"managed,omitempty"`
+	Commit       string   `json:"commit,omitempty"`
+	Image        string   `json:"image,omitempty"`
+	Driver       string   `json:"driver,omitempty"`
 	ID           string   `json:"id"`
 	Name         string   `json:"name"`
 	Description  string   `json:"description,omitempty"`
@@ -35,7 +40,7 @@ func Catalog(r registry.Registry) []PublicApp {
 	apps := []PublicApp{}
 	for _, a := range r.Apps {
 		m := a.Manifest
-		if m.Visibility != "public" {
+		if m.Visibility != "public" || a.Disabled {
 			continue
 		}
 		apps = append(apps, PublicApp{ID: m.ID, Name: m.Name, Description: m.Description, Path: m.Path, Kind: m.Kind, Startup: m.Startup, State: "unknown", Actions: m.Lifecycle.Allow})
@@ -51,6 +56,7 @@ func CatalogWithReadiness(r registry.Registry, store registry.Store) []PublicApp
 	}
 	for i := range apps {
 		apps[i].OfflineReady = presentation.OfflineReady(store, byID[apps[i].ID])
+		apps[i].DisplayReady = presentation.DisplayReady(store, byID[apps[i].ID])
 	}
 	return apps
 }
@@ -68,7 +74,9 @@ func Render(r registry.Registry) string {
 			directive = "handle"
 		}
 		fmt.Fprintf(&s, " %s %s* {\n", directive, m.Path)
-		if m.Visibility == "private" {
+		if a.Disabled {
+			s.WriteString(" respond \"Application stopped\" 503\n")
+		} else if m.Visibility == "private" {
 			s.WriteString(" respond \"Private application\" 403\n")
 		} else if m.Kind == "static" {
 			if a.StaticRestore != "" {

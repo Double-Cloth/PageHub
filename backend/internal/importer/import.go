@@ -124,6 +124,9 @@ func (i Importer) Import(ctx context.Context, archive string, opts Options) (pla
 	if old != nil && old.Manifest.Kind != m.Kind {
 		return plan, errors.New("应用类型变更需要独立迁移，禁止在原工程上隐式切换")
 	}
+	if old != nil && old.Managed != nil {
+		return plan, errors.New("托管应用请使用 pagehub update <id> 及声明式配置管理")
+	}
 	if old != nil {
 		plan.Project = old.Project
 	}
@@ -318,7 +321,11 @@ func (i Importer) Import(ctx context.Context, archive string, opts Options) (pla
 func (i Importer) WaitHealthy(ctx context.Context, a registry.Record) error {
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
-	timeout := time.NewTimer(60 * time.Second)
+	duration := 60 * time.Second
+	if a.Managed != nil {
+		duration = 180 * time.Second
+	}
+	timeout := time.NewTimer(duration)
 	defer timeout.Stop()
 	for {
 		if s := i.Adapter.Inspect(ctx, a); s.State == "healthy" {

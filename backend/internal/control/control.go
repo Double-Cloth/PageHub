@@ -22,6 +22,7 @@ import (
 	"github.com/double-cloth-studio/PageHub/backend/internal/auth"
 	"github.com/double-cloth-studio/PageHub/backend/internal/gateway"
 	"github.com/double-cloth-studio/PageHub/backend/internal/lifecycle"
+	"github.com/double-cloth-studio/PageHub/backend/internal/managed"
 	"github.com/double-cloth-studio/PageHub/backend/internal/manifests"
 	"github.com/double-cloth-studio/PageHub/backend/internal/presentation"
 	"github.com/double-cloth-studio/PageHub/backend/internal/registry"
@@ -67,6 +68,50 @@ func UnixListener(path string, mode os.FileMode) (net.Listener, error) {
 
 func RunnerHandler(service lifecycle.Service) http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /managed/self/{id}", func(w http.ResponseWriter, r *http.Request) {
+		result, err := (managed.Service{Legacy: service}).SelfResult(r.Context(), r.PathValue("id"))
+		if err != nil {
+			Fail(w, 409, err.Error())
+			return
+		}
+		JSON(w, 200, result)
+	})
+	mux.HandleFunc("GET /managed/operations", func(w http.ResponseWriter, r *http.Request) {
+		result, err := (managed.Service{Legacy: service}).Operations()
+		if err != nil {
+			Fail(w, 409, "读取运维记录失败")
+			return
+		}
+		JSON(w, 200, result)
+	})
+	mux.HandleFunc("GET /managed/plan/{id}", func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+		if !manifests.IDPattern.MatchString(id) {
+			Fail(w, 400, "应用 ID 无效")
+			return
+		}
+		s := managed.Service{Legacy: service}
+		if id == "self" {
+			plan, err := s.SelfPlan(r.Context())
+			if err != nil {
+				Fail(w, 409, err.Error())
+				return
+			}
+			JSON(w, 200, plan)
+			return
+		}
+		c, err := s.Config()
+		if err != nil {
+			Fail(w, 409, err.Error())
+			return
+		}
+		plan, err := s.TargetPlan(r.Context(), c, id)
+		if err != nil {
+			Fail(w, 409, err.Error())
+			return
+		}
+		JSON(w, 200, plan)
+	})
 	mux.HandleFunc("GET /status/{id}", func(w http.ResponseWriter, r *http.Request) {
 		a, err := service.Store.Get(r.PathValue("id"))
 		if err != nil {
@@ -94,8 +139,17 @@ func RunnerHandler(service lifecycle.Service) http.Handler {
 			Fail(w, 400, "执行计划格式无效")
 			return
 		}
-		ctx, cancel := context.WithTimeout(r.Context(), 180*time.Second)
+		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Minute)
 		defer cancel()
+		if p.Action == "backup" || p.Action == "restore" || p.Action == "update" || p.Action == "update-self" || p.Action == "rollback" || p.Action == "uninstall" {
+			result, err := (managed.Service{Legacy: service}).Execute(ctx, p)
+			if err != nil {
+				Fail(w, 409, err.Error())
+				return
+			}
+			JSON(w, 200, result)
+			return
+		}
 		if err := service.Execute(ctx, p); err != nil {
 			Fail(w, 409, err.Error())
 			return
@@ -116,7 +170,7 @@ func (c RunnerClient) Call(ctx context.Context, method, path string, body io.Rea
 	if err != nil {
 		return err
 	}
-	resp, err := (&http.Client{Transport: transport, Timeout: 190 * time.Second}).Do(req)
+	resp, err := (&http.Client{Transport: transport, Timeout: 31 * time.Minute}).Do(req)
 	if err != nil {
 		return errors.New("Runner 无法连接")
 	}
@@ -128,14 +182,17 @@ func (c RunnerClient) Call(ctx context.Context, method, path string, body io.Rea
 }
 
 type Job struct {
-	ID        string    `json:"id"`
-	AppID     string    `json:"app_id"`
-	Action    string    `json:"action"`
-	State     string    `json:"state"`
-	Error     string    `json:"error,omitempty"`
-	Actor     string    `json:"actor,omitempty"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	Changes   []managed.Change  `json:"changes,omitempty"`
+	Commit    string            `json:"commit,omitempty"`
+	Result    map[string]string `json:"result,omitempty"`
+	ID        string            `json:"id"`
+	AppID     string            `json:"app_id"`
+	Action    string            `json:"action"`
+	State     string            `json:"state"`
+	Error     string            `json:"error,omitempty"`
+	Actor     string            `json:"actor,omitempty"`
+	CreatedAt time.Time         `json:"created_at"`
+	UpdatedAt time.Time         `json:"updated_at"`
 }
 type Manager struct {
 	Store     registry.Store
@@ -217,6 +274,9 @@ func (m *Manager) Admin() http.Handler {
 	for _, file := range files {
 		var job Job
 		if b, e := os.ReadFile(file); e == nil && json.Unmarshal(b, &job) == nil && (job.State == "running" || job.State == "queued") {
+			if job.Action == "update-self" && job.Result["request_id"] != "" {
+				continue
+			}
 			job.State = "error"
 			job.Error = "Manager 重启中断任务，请检查实际容器状态"
 			job.UpdatedAt = time.Now().UTC()
@@ -225,6 +285,22 @@ func (m *Manager) Admin() http.Handler {
 	}
 	mux := http.NewServeMux()
 	m.portalRoutes(mux)
+	mux.HandleFunc("GET /admin/api/apps/{id}/plan", func(w http.ResponseWriter, r *http.Request) {
+		if !m.authorized(w, r) {
+			return
+		}
+		id := r.PathValue("id")
+		if !manifests.IDPattern.MatchString(id) {
+			Fail(w, 400, "应用 ID 无效")
+			return
+		}
+		var plan managed.Plan
+		if err := m.Runner.Call(r.Context(), "GET", "/managed/plan/"+id, nil, &plan); err != nil {
+			Fail(w, 409, err.Error())
+			return
+		}
+		JSON(w, 200, plan)
+	})
 	mux.Handle("/_pagehub/api/", m.Public())
 	mux.HandleFunc("GET /admin/api/apps", func(w http.ResponseWriter, r *http.Request) {
 		if !m.authorized(w, r) {
@@ -238,6 +314,14 @@ func (m *Manager) Admin() http.Handler {
 		apps := []gateway.PublicApp{}
 		for _, a := range rgy.Apps {
 			entry := gateway.PublicApp{ID: a.Manifest.ID, Name: a.Manifest.Name, Description: a.Manifest.Description, Path: a.Manifest.Path, Kind: a.Manifest.Kind, Startup: a.Manifest.Startup, State: "unknown", Actions: a.Manifest.Lifecycle.Allow, OfflineReady: a.Manifest.Visibility == "public" && presentation.OfflineReady(m.Store, a)}
+			if a.Managed != nil {
+				entry.Actions = []string{"start", "stop", "restart"}
+				entry.Managed = true
+				entry.Commit = a.Managed.Commit
+				entry.Image = a.Managed.Image
+				entry.Driver = a.Managed.Config.Deployment.Driver
+			}
+			entry.DisplayReady = presentation.DisplayReady(m.Store, a)
 			apps = append(apps, entry)
 		}
 		JSON(w, 200, apps)
@@ -281,6 +365,7 @@ func (m *Manager) Admin() http.Handler {
 			Fail(w, 500, "任务记录损坏")
 			return
 		}
+		m.refreshPlatformJob(r.Context(), &job)
 		JSON(w, 200, job)
 	})
 	mux.HandleFunc("GET /admin/api/audit", func(w http.ResponseWriter, r *http.Request) {
@@ -294,8 +379,13 @@ func (m *Manager) Admin() http.Handler {
 		for _, file := range files {
 			var job Job
 			if b, e := os.ReadFile(file); e == nil && json.Unmarshal(b, &job) == nil {
+				m.refreshPlatformJob(r.Context(), &job)
 				jobs = append(jobs, job)
 			}
+		}
+		var operations []Job
+		if m.Runner.Call(r.Context(), "GET", "/managed/operations", nil, &operations) == nil {
+			jobs = append(jobs, operations...)
 		}
 		sort.Slice(jobs, func(i, j int) bool { return jobs[i].CreatedAt.After(jobs[j].CreatedAt) })
 		jobs = jobs[:min(len(jobs), 200)]
@@ -321,16 +411,49 @@ func (m *Manager) startJob(w http.ResponseWriter, r *http.Request) {
 		Fail(w, 404, "应用不存在")
 		return
 	}
-	a, err := m.Store.Get(id)
-	if err != nil {
-		Fail(w, 404, "应用不存在")
-		return
+	platformUpdate := id == "self" && action == "update-self"
+	var a registry.Record
+	var err error
+	if !platformUpdate {
+		a, err = m.Store.Get(id)
+		if err != nil {
+			Fail(w, 404, "应用不存在")
+			return
+		}
 	}
-	if action != "start" && action != "stop" && action != "restart" {
+	maintenance := platformUpdate || action == "backup" || action == "restore" || action == "update" || action == "rollback" || action == "uninstall"
+	if action != "start" && action != "stop" && action != "restart" && !maintenance {
 		Fail(w, 400, "操作无效")
 		return
 	}
-	if !a.Manifest.Allows(action) {
+	var approval struct {
+		Backup       string `json:"backup"`
+		Password     string `json:"password"`
+		ConfirmID    string `json:"confirm_id"`
+		ApprovedPlan string `json:"approved_plan_sha256"`
+	}
+	if maintenance {
+		if !platformUpdate && a.Managed == nil {
+			Fail(w, 403, "应用尚未托管")
+			return
+		}
+		decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096))
+		decoder.DisallowUnknownFields()
+		if decoder.Decode(&approval) != nil || approval.ConfirmID != id {
+			Fail(w, 400, "需要确认目标应用")
+			return
+		}
+		var extra any
+		if decoder.Decode(&extra) != io.EOF {
+			Fail(w, 400, "审批请求无效")
+			return
+		}
+		if err := m.Sessions.VerifyPassword(m.Store.Path("secrets", "admin-password.json"), approval.Password, r.RemoteAddr); err != nil {
+			Fail(w, 401, "需要重新验证管理员密码")
+			return
+		}
+	}
+	if !maintenance && !a.Allows(action) {
 		Fail(w, 403, "应用未授权该操作")
 		return
 	}
@@ -356,6 +479,8 @@ func (m *Manager) startJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p := adapters.ExecutionPlan{ID: id, Action: action, Fingerprint: registry.Fingerprint(a)}
+	p.ApprovedPlan = approval.ApprovedPlan
+	p.Backup = approval.Backup
 	go func() {
 		defer m.release(id)
 		job.State = "running"
@@ -363,12 +488,16 @@ func (m *Manager) startJob(w http.ResponseWriter, r *http.Request) {
 		if registry.WriteJSON(file, job, 0600) != nil {
 			return
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), 190*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 31*time.Minute)
 		defer cancel()
 		payload, _ := json.Marshal(p)
 		var result map[string]string
 		err := m.Runner.Call(ctx, "POST", "/execute", strings.NewReader(string(payload)), &result)
 		job.State = "succeeded"
+		job.Result = result
+		if result["request_id"] != "" {
+			job.State = "running"
+		}
 		if err != nil {
 			job.State = "error"
 			job.Error = err.Error()
@@ -379,3 +508,23 @@ func (m *Manager) startJob(w http.ResponseWriter, r *http.Request) {
 	JSON(w, 202, job)
 }
 func (m *Manager) release(id string) { m.mu.Lock(); delete(m.active, id); m.mu.Unlock() }
+
+func (m *Manager) refreshPlatformJob(ctx context.Context, job *Job) {
+	if job.Action != "update-self" || job.Result["request_id"] == "" || (job.State != "running" && job.State != "queued") {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	var result map[string]string
+	if m.Runner.Call(ctx, "GET", "/managed/self/"+job.Result["request_id"], nil, &result) != nil {
+		return
+	}
+	state := result["state"]
+	if state != "succeeded" && state != "error" {
+		return
+	}
+	job.State = state
+	job.Error = result["error"]
+	job.UpdatedAt = time.Now().UTC()
+	_ = registry.WriteJSON(m.Store.Path("state", "manager", "jobs", job.ID+".json"), job, 0600)
+}

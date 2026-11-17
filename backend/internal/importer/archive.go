@@ -20,11 +20,12 @@ const MaxExpanded = 256 << 20
 const MaxFiles = 10000
 
 type extractor struct {
-	root  *os.Root
-	seen  map[string]bool
-	names map[string]string
-	bytes int64
-	count int
+	root   *os.Root
+	seen   map[string]bool
+	names  map[string]string
+	bytes  int64
+	count  int
+	source bool
 }
 
 func (e *extractor) add(ctx context.Context, name string, size int64, directory bool, executable bool, reader io.Reader) error {
@@ -55,7 +56,7 @@ func (e *extractor) add(ctx context.Context, name string, size int64, directory 
 	}
 	e.bytes += size
 	base := strings.ToLower(path.Base(name))
-	if base == ".env" || strings.HasPrefix(base, ".env.") && base != ".env.example" || strings.HasSuffix(base, ".pem") || strings.HasSuffix(base, ".key") || base == "id_rsa" || base == ".git" || strings.Contains("/"+key, "/.git/") || strings.HasPrefix(base, "pagehub.") {
+	if base == ".env" || strings.HasPrefix(base, ".env.") && base != ".env.example" || strings.HasSuffix(base, ".pem") || strings.HasSuffix(base, ".key") || base == "id_rsa" || base == ".git" || strings.Contains("/"+key, "/.git/") || (!e.source && strings.HasPrefix(base, "pagehub.")) {
 		return errors.New("应用包包含秘密文件或平台保留文件")
 	}
 	if directory {
@@ -101,6 +102,15 @@ func (e *extractor) mkdir(name string) error {
 }
 
 func Extract(ctx context.Context, archive, destination string) (string, error) {
+	return extract(ctx, archive, destination, false)
+}
+
+// ExtractSource 对 Git 归档沿用路径、权限、链接和大小限制。
+func ExtractSource(ctx context.Context, archive, destination string) (string, error) {
+	return extract(ctx, archive, destination, true)
+}
+
+func extract(ctx context.Context, archive, destination string, source bool) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	f, err := os.Open(archive)
@@ -125,7 +135,7 @@ func Extract(ctx context.Context, archive, destination string) (string, error) {
 		return "", err
 	}
 	defer root.Close()
-	e := extractor{root: root, seen: map[string]bool{}, names: map[string]string{}}
+	e := extractor{root: root, seen: map[string]bool{}, names: map[string]string{}, source: source}
 	if strings.HasSuffix(strings.ToLower(archive), ".zip") {
 		z, err := zip.NewReader(f, st.Size())
 		if err != nil {
@@ -193,11 +203,11 @@ func Extract(ctx context.Context, archive, destination string) (string, error) {
 	} else {
 		return "", errors.New("仅接受 .zip 或 .tar.gz")
 	}
-	if !e.seen["app.yaml"] {
+	if !source && !e.seen["app.yaml"] {
 		return "", errors.New("归档根目录缺少 app.yaml")
 	}
 	for name := range e.seen {
-		if strings.HasSuffix(name, "/app.yaml") {
+		if !source && strings.HasSuffix(name, "/app.yaml") {
 			return "", errors.New("包内仅允许根目录 app.yaml")
 		}
 	}

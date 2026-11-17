@@ -6,6 +6,9 @@ platform_lock
 previous="$(cat "$PAGEHUB_ROOT/state/previous-release")"
 [[ "$previous" == "$PAGEHUB_ROOT/releases/"* && -x "$previous/bin/pagehub-runner" ]] || die '上一个版本无效'
 current="$(readlink -f "$PAGEHUB_ROOT/current")"
+if [[ -f "$PAGEHUB_ROOT/config/pagehub.yaml" ]]; then
+  "$previous/bin/pagehub-runner" desired validate -c "$PAGEHUB_ROOT/config/pagehub.yaml"
+fi
 ln -sfnT "$previous" "$PAGEHUB_ROOT/current.rollback"
 mv -Tf "$PAGEHUB_ROOT/current.rollback" "$PAGEHUB_ROOT/current"
 printf '%s\n' "$current" > "$PAGEHUB_ROOT/state/previous-release"

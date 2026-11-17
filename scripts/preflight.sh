@@ -15,4 +15,4 @@ available="$(df -Pk "$PAGEHUB_ROOT" | awk 'NR==2 {print $4}')"
 if [[ -n "$(ss -H -ltn "sport = :$PAGEHUB_GATEWAY_PORT")" ]]; then
   die '网关端口已占用，请调整 PAGEHUB_GATEWAY_PORT'
 fi
-[[ -z "$(ss -H -ltn 'sport = :8091')" ]] || die '本机管理端口 8091 已占用，请先调整冲突的服务'
+[[ -z "$(ss -H -ltn "sport = :$PAGEHUB_ADMIN_PORT")" ]] || die '本机管理端口已占用，请先调整冲突的服务'

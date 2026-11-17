@@ -6,6 +6,8 @@ require_install
 command="${1:-status}"
 [[ $# == 0 ]] || shift
 case "$command" in
+  plan|apply|uninstall) runner desired "$command" "$@" ;;
+  start|stop|restart) runner app "$command" "$@" ;;
   admin)
     [[ "${1:-}" == set-password ]] || die '用法: pagehub.sh admin set-password'
     read -r -s -p '设置管理员密码（至少 12 字节）: ' password; printf '\n'
@@ -30,8 +32,15 @@ case "$command" in
       runner "$command" "$@"
     fi
     ;;
-  status|compose-review|app|doctor|rollback|remove-app|gateway) runner "$command" "$@" ;;
+  status|compose-review|app|doctor|remove-app|gateway) runner "$command" "$@" ;;
+  rollback)
+    if [[ "${1:-}" == self ]]; then bash "$PAGEHUB_ROOT/current/scripts/rollback.sh"; else runner rollback "$@"; fi
+    ;;
   add-app|update|adopt-app)
+    if [[ "$command" == update && ( $# -lt 2 || "${1:-}" == --* || "${2:-}" == --* ) ]]; then
+      runner desired update "$@"
+      exit
+    fi
     [[ $# -gt 0 ]] || die '需要应用包路径，update 还需应用 ID'
     dry=false; approved=false
     for arg in "$@"; do [[ "$arg" != --dry-run ]] || dry=true; [[ "$arg" != --approved-sha256* ]] || approved=true; done
@@ -45,7 +54,7 @@ case "$command" in
     runner "$command" "$@" --approved-sha256 "$digest"
     ;;
   logs)
-    case "${1:-}" in gateway|portal) platform_compose "$1" logs --tail 100 ;; manager|runner|social) journalctl -u "pagehub-$1" -n 100 --no-pager ;; *) runner logs "$@" ;; esac
+    case "${1:-}" in gateway|portal) platform_compose "$1" logs --tail 100 ;; manager|runner|social|updater) journalctl -u "pagehub-$1" -n 100 --no-pager ;; *) runner logs "$@" ;; esac
     ;;
   platform-update) bash "$PAGEHUB_ROOT/current/scripts/update.sh" "$@" ;;
   platform-rollback) bash "$PAGEHUB_ROOT/current/scripts/rollback.sh" ;;

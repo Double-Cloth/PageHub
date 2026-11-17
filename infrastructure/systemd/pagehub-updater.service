@@ -1,0 +1,16 @@
+[Unit]
+Description=PageHub independent platform update transaction
+Requires=docker.service
+After=docker.service network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=pagehub
+UMask=0077
+EnvironmentFile=/srv/pagehub/config/pagehub.env
+EnvironmentFile=/srv/pagehub/current/runtime.env
+ExecStart=/bin/bash /srv/pagehub/current/scripts/self-update.sh
+TimeoutStartSec=3600
+StandardOutput=journal
+StandardError=journal

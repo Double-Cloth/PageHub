@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { Action, AppEntry } from "../../models/app";
+import type { Action, AppEntry, MaintenanceAction } from "../../models/app";
 import { actionLabels, stateLabels } from "../../models/app";
 
 defineProps<{
@@ -7,12 +7,20 @@ defineProps<{
   managed: boolean;
   busy: Record<string, boolean>;
 }>();
-defineEmits<{ action: [app: AppEntry, action: Action] }>();
+defineEmits<{
+  action: [app: AppEntry, action: Action];
+  maintenance: [app: AppEntry, action: MaintenanceAction];
+}>();
 </script>
 
 <template>
   <ul class="app-list" aria-label="应用列表">
-    <li v-for="app in apps" :key="app.id" class="app-row">
+    <li
+      v-for="app in apps"
+      :key="app.id"
+      class="app-row"
+      :class="{ 'managed-app-row': managed && app.managed }"
+    >
       <div class="app-symbol" aria-hidden="true">
         {{ app.name.slice(0, 1).toUpperCase() }}
       </div>
@@ -43,6 +51,35 @@ defineEmits<{ action: [app: AppEntry, action: Action] }>();
         >
           {{ actionLabels[action] }}
         </button>
+      </div>
+      <div v-if="managed && app.managed" class="app-maintenance">
+        <p class="mono">
+          {{ app.commit?.slice(0, 12) || "原版本 SHA 未知" }} · {{ app.driver }}
+        </p>
+        <div class="app-actions">
+          <button
+            v-for="operation in [
+              'update',
+              'backup',
+              'rollback',
+              'uninstall',
+            ] as const"
+            :key="operation"
+            class="button small"
+            :disabled="busy[app.id]"
+            @click="$emit('maintenance', app, operation)"
+          >
+            {{ actionLabels[operation] }}
+          </button>
+          <button
+            v-if="app.kind === 'compose'"
+            class="button small"
+            :disabled="busy[app.id]"
+            @click="$emit('maintenance', app, 'restore')"
+          >
+            恢复备份
+          </button>
+        </div>
       </div>
       <a class="visit" :href="app.path" :aria-label="`访问 ${app.name}`">
         <span>打开</span

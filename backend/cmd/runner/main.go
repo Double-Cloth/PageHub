@@ -21,6 +21,7 @@ import (
 	"github.com/double-cloth-studio/PageHub/backend/internal/gateway"
 	"github.com/double-cloth-studio/PageHub/backend/internal/importer"
 	"github.com/double-cloth-studio/PageHub/backend/internal/lifecycle"
+	"github.com/double-cloth-studio/PageHub/backend/internal/managed"
 	"github.com/double-cloth-studio/PageHub/backend/internal/registry"
 )
 
@@ -59,15 +60,19 @@ func run() error {
 	if len(args) == 0 {
 		return errors.New("需要命令: serve/status/app/add-app/recover/gateway/backup/update/rollback/remove-app/doctor")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Hour)
 	defer cancel()
+	managedService := managed.Service{Legacy: service}
+	if args[0] == "desired" {
+		return managedService.CLI(ctx, args[1:])
+	}
 	switch args[0] {
 	case "serve":
 		listener, err := control.UnixListener("/run/pagehub/runner.sock", 0660)
 		if err != nil {
 			return err
 		}
-		server := &http.Server{Handler: control.RunnerHandler(service), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 200 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 16384}
+		server := &http.Server{Handler: control.RunnerHandler(service), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 31 * time.Minute, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 16384}
 		return server.Serve(listener)
 	case "compose-review":
 		if len(args) != 4 || !filepath.IsAbs(args[1]) {
@@ -96,6 +101,9 @@ func run() error {
 		}
 		return json.NewEncoder(os.Stdout).Encode(map[string]any{"config_sha256": hex.EncodeToString(sum[:]), "approvals": approvals})
 	case "status":
+		if _, err := os.Stat(store.Path("config", "pagehub.yaml")); err == nil {
+			return managedService.CLI(ctx, []string{"status"})
+		}
 		r, err := store.Load()
 		if err != nil {
 			return err
@@ -106,6 +114,9 @@ func run() error {
 		}
 		return json.NewEncoder(os.Stdout).Encode(statuses)
 	case "doctor":
+		if _, err := os.Stat(managedService.ConfigFile()); err == nil {
+			return managedService.Doctor(ctx)
+		}
 		return service.Doctor(ctx)
 	case "gateway":
 		if len(args) != 2 || args[1] != "reload" {
@@ -185,8 +196,32 @@ func run() error {
 		if len(args) < 3 || len(args) > 4 || (len(args) == 4 && args[3] != "--dry-run") {
 			return errors.New("用法: restore <id> <备份目录> [--dry-run]")
 		}
+		if managedService.IsManaged(args[1]) {
+			a, err := store.Get(args[1])
+			if err != nil {
+				return err
+			}
+			if a.Manifest.Kind == "compose" {
+				if len(args) == 4 {
+					return managedService.VerifyBackup(ctx, args[1], args[2])
+				}
+				return managedService.CLI(ctx, []string{"restore", args[1], "--backup", args[2]})
+			}
+		}
 		return service.Restore(ctx, args[1], args[2], len(args) == 4)
 	case "backup":
+		if len(args) == 4 && args[1] == "verify" && managedService.IsManaged(args[2]) {
+			a, e := store.Get(args[2])
+			if e != nil {
+				return e
+			}
+			if a.Manifest.Kind == "compose" {
+				return managedService.VerifyBackup(ctx, args[2], args[3])
+			}
+		}
+		if len(args) == 2 && managedService.IsManaged(args[1]) {
+			return managedService.CLI(ctx, args)
+		}
 		if len(args) == 4 && args[1] == "verify" {
 			return service.VerifyBackup(ctx, args[2], args[3])
 		}
@@ -200,6 +235,9 @@ func run() error {
 		}
 		return err
 	case "rollback":
+		if len(args) == 2 && managedService.IsManaged(args[1]) {
+			return managedService.Rollback(ctx, args[1])
+		}
 		if len(args) < 2 {
 			return errors.New("用法: rollback <id> [--maintenance-receipt <file>]")
 		}
@@ -213,6 +251,9 @@ func run() error {
 		if len(args) != 2 {
 			return errors.New("用法: remove-app <id>")
 		}
+		if managedService.IsManaged(args[1]) {
+			return managedService.Uninstall(ctx, args[1])
+		}
 		return service.Remove(ctx, args[1])
 	case "logs":
 		if len(args) != 2 {
@@ -221,6 +262,10 @@ func run() error {
 		a, err := store.Get(args[1])
 		if err != nil {
 			return err
+		}
+		if a.Manifest.Kind == "static" {
+			fmt.Println("静态应用由共享网关提供访问日志，请使用 pagehub logs gateway")
+			return nil
 		}
 		out, err := d.Compose(ctx, a, "logs", "--tail", "100", "--no-color")
 		if err == nil {

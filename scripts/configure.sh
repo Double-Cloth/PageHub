@@ -19,6 +19,8 @@ if [[ ! -f "$PAGEHUB_ROOT/config/pagehub.env" ]]; then
   [[ "$PAGEHUB_GATEWAY_PORT" =~ ^[0-9]+$ && "$PAGEHUB_GATEWAY_PORT" -ge 1024 && "$PAGEHUB_GATEWAY_PORT" -le 65535 ]] || die '网关端口必须为 1024..65535'
   printf 'PAGEHUB_ROOT=%s\nPAGEHUB_PUBLIC_ORIGIN=%s\nPAGEHUB_GATEWAY_PORT=%s\nPAGEHUB_FRP_MODE=external\nPAGEHUB_ADMIN_ACCESS=local\nPAGEHUB_DEV_IMAGES=%s\nPAGEHUB_IMPORT_BUNDLED=%s\nPAGEHUB_OFFLINE=%s\nPAGEHUB_CADDY_IMAGE=%s\nPAGEHUB_PORTAL_IMAGE=%s\n' "$PAGEHUB_ROOT" "$origin" "$PAGEHUB_GATEWAY_PORT" "$PAGEHUB_DEV_IMAGES" "${PAGEHUB_IMPORT_BUNDLED:-true}" "$PAGEHUB_OFFLINE" "$PAGEHUB_CADDY_IMAGE" "$PAGEHUB_PORTAL_IMAGE" > "$PAGEHUB_ROOT/config/pagehub.env"
   chmod 600 "$PAGEHUB_ROOT/config/pagehub.env"
+  printf 'PAGEHUB_ADMIN_PORT=%s\n' "$PAGEHUB_ADMIN_PORT" >> "$PAGEHUB_ROOT/config/pagehub.env"
+  if [[ -n "${PAGEHUB_CONFIG_FILE:-}" ]]; then printf 'PAGEHUB_CONFIG_FILE=%s\n' "$PAGEHUB_CONFIG_FILE" >> "$PAGEHUB_ROOT/config/pagehub.env"; fi
 fi
 if [[ ! -f "$PAGEHUB_ROOT/secrets/admin.token" ]]; then
   python3 -c 'import secrets; print(secrets.token_urlsafe(48))' > "$PAGEHUB_ROOT/secrets/admin.token"

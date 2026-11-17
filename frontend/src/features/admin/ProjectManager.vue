@@ -196,11 +196,13 @@ onUnmounted(() => window.removeEventListener("beforeunload", preventLeave));
         ><button
           v-if="!draft.projects.some((project) => project.appId === app.id)"
           class="button"
-          :disabled="!app.offlineReady"
+          :disabled="!(app.displayReady ?? app.offlineReady)"
           @click="add(app)"
         >
           {{ app.name
-          }}<span>{{ app.offlineReady ? "添加" : "待离线验证" }}</span>
+          }}<span>{{
+            (app.displayReady ?? app.offlineReady) ? "添加" : "待离线验证"
+          }}</span>
         </button></template
       >
       <p>仅可添加公开且通过当前版本离线审核的应用。</p>

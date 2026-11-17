@@ -53,6 +53,10 @@ func OfflineReady(store registry.Store, app registry.Record) bool {
 	data, err := os.ReadFile(store.Path("state", "offline", app.Manifest.ID+".json"))
 	return err == nil && json.Unmarshal(data, &record) == nil && record.Passed && record.AppID == app.Manifest.ID && record.Fingerprint == registry.Fingerprint(app) && record.Target != "" && record.Evidence != "" && !record.VerifiedAt.IsZero()
 }
+func DisplayReady(store registry.Store, app registry.Record) bool {
+	return app.Manifest.Visibility == "public" && !app.Disabled && (app.Managed != nil || OfflineReady(store, app))
+}
+
 func Load(store registry.Store) (Settings, error) {
 	var settings Settings
 	data, err := os.ReadFile(store.Path("state", "portal", "ui-settings.json"))
@@ -63,7 +67,7 @@ func Load(store registry.Store) (Settings, error) {
 			return settings, loadErr
 		}
 		for _, app := range apps.Apps {
-			if app.Manifest.Visibility == "public" && OfflineReady(store, app) {
+			if DisplayReady(store, app) {
 				settings.Projects = append(settings.Projects, Project{ID: app.Manifest.ID, AppID: app.Manifest.ID, DisplayOrder: len(settings.Projects), DisplayEnabled: true, Keywords: []string{}})
 			}
 		}
@@ -91,7 +95,7 @@ func Public(store registry.Store) (Settings, error) {
 	}
 	allowed := map[string]bool{}
 	for _, app := range apps.Apps {
-		allowed[app.Manifest.ID] = app.Manifest.Visibility == "public" && OfflineReady(store, app)
+		allowed[app.Manifest.ID] = DisplayReady(store, app)
 	}
 	visible := []Project{}
 	for _, project := range settings.Projects {
@@ -155,8 +159,8 @@ func validate(store registry.Store, settings Settings) error {
 			}
 		}
 		app, err := store.Get(project.AppID)
-		if err != nil || app.Manifest.Visibility != "public" || !OfflineReady(store, app) {
-			return errors.New("项目未登记、不可公开或当前版本尚未通过离线验证")
+		if err != nil || !DisplayReady(store, app) {
+			return errors.New("项目未登记、入口已禁用或当前版本尚未通过准入审核")
 		}
 		ids[project.ID], appIDs[project.AppID], orders[project.DisplayOrder] = true, true, true
 	}

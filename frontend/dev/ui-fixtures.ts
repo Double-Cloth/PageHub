@@ -6,6 +6,9 @@ export function uiFixtures(): Plugin {
   const apps = [
     {
       id: "docs",
+      managed: true,
+      commit: "a".repeat(40),
+      driver: "managed-static",
       name: "项目文档",
       description: "想法、过程与使用指南",
       path: "/docs/",
@@ -152,7 +155,7 @@ export function uiFixtures(): Plugin {
         let body: unknown;
         let status = 200;
         const match = url.match(
-          /\/apps\/([^/]+)\/(status|start|stop|restart)$/,
+          /\/apps\/([^/]+)\/(status|start|stop|restart|plan|backup|restore|update|update-self|rollback|uninstall)$/,
         );
         if (url.endsWith("/session")) body = { csrf: "demo-session" };
         else if (url.endsWith("/logout")) body = { ok: true };
@@ -177,12 +180,61 @@ export function uiFixtures(): Plugin {
         } else if (url.endsWith("/apps") || url.endsWith("catalog.json"))
           body = apps;
         else if (match) {
-          const app = apps.find((item) => item.id === match[1]);
+          const app =
+            apps.find((item) => item.id === match[1]) ??
+            (match[1] === "self"
+              ? { id: "self", state: "healthy", actions: [] }
+              : undefined);
           if (!app) {
             status = 404;
             body = { error: "应用不存在" };
           } else if (match[2] === "status") body = { state: app.state };
-          else if (req.method === "POST" && app.actions.includes(match[2]!)) {
+          else if (match[2] === "plan")
+            body = {
+              sha256: "demo-plan",
+              changes: [
+                {
+                  id: app.id,
+                  action: "update",
+                  current_commit: "a".repeat(40),
+                  target_commit: "b".repeat(40),
+                },
+              ],
+            };
+          else if (
+            req.method === "POST" &&
+            [
+              "backup",
+              "restore",
+              "update",
+              "update-self",
+              "rollback",
+              "uninstall",
+            ].includes(match[2]!)
+          ) {
+            if (
+              payload.confirm_id !== app.id ||
+              !payload.password ||
+              ((match[2] === "update" || match[2] === "update-self") &&
+                payload.approved_plan_sha256 !== "demo-plan")
+            ) {
+              status = 400;
+              body = { error: "演示维护操作需要确认目标、密码与计划" };
+            } else {
+              const id = String(Date.now());
+              body = {
+                id,
+                app_id: app.id,
+                action: match[2],
+                state: "succeeded",
+                result: match[2] === "backup" ? { backup: "演示备份收据" } : {},
+              };
+              jobs.set(id, body as object);
+            }
+          } else if (
+            req.method === "POST" &&
+            (app.actions as string[]).includes(match[2]!)
+          ) {
             app.state = match[2] === "stop" ? "stopped" : "healthy";
             const id = String(Date.now());
             body = { id, app_id: app.id, action: match[2], state: "succeeded" };

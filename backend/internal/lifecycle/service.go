@@ -36,6 +36,11 @@ func (s Service) Execute(ctx context.Context, p adapters.ExecutionPlan) (err err
 	if !validAction(p.Action) {
 		return errors.New("动作不在白名单")
 	}
+	global, err := registry.Lock(s.Store.Path("state", "platform.lock"))
+	if err != nil {
+		return err
+	}
+	defer global()
 	a, err := s.Store.Get(p.ID)
 	if err != nil {
 		return err
@@ -46,7 +51,7 @@ func (s Service) Execute(ctx context.Context, p adapters.ExecutionPlan) (err err
 	if p.Fingerprint != registry.Fingerprint(a) {
 		return errors.New("执行计划已过期")
 	}
-	if !a.Manifest.Allows(p.Action) {
+	if !a.Allows(p.Action) {
 		return errors.New("应用未授权此操作")
 	}
 	unlock, err := registry.Lock(s.Store.Path("state", "locks", p.ID+".lock"))
@@ -62,15 +67,66 @@ func (s Service) Execute(ctx context.Context, p adapters.ExecutionPlan) (err err
 	if registry.Fingerprint(current) != p.Fingerprint {
 		return errors.New("执行计划已过期")
 	}
+	if a.Managed != nil && a.Manifest.Kind == "static" {
+		return s.setRoute(ctx, a, p.Action == "stop")
+	}
+	wasRunning := false
+	if a.Managed != nil {
+		wasRunning = s.Adapter.Inspect(ctx, a).Running
+	}
 	if p.Action == "stop" || p.Action == "restart" {
 		if err = s.Adapter.Stop(ctx, a); err != nil {
 			return err
 		}
 	}
 	if p.Action == "start" || p.Action == "restart" {
-		return s.Adapter.Start(ctx, a)
+		if err = s.Adapter.Start(ctx, a); err != nil {
+			return err
+		}
+	}
+	if a.Managed != nil {
+		if err = s.setRoute(ctx, a, p.Action == "stop"); err != nil {
+			recovery, cancel := context.WithTimeout(context.Background(), time.Minute)
+			defer cancel()
+			if wasRunning {
+				return errors.Join(err, s.Adapter.Start(recovery, a))
+			}
+			return errors.Join(err, s.Adapter.Stop(recovery, a))
+		}
 	}
 	return nil
+}
+
+func (s Service) setRoute(ctx context.Context, a registry.Record, disabled bool) (err error) {
+	unlock, err := registry.Lock(s.Store.Path("state", "routes.lock"))
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	r, err := s.Store.Load()
+	if err != nil {
+		return err
+	}
+	next := registry.Registry{SchemaVersion: r.SchemaVersion, Apps: append([]registry.Record{}, r.Apps...)}
+	for i := range next.Apps {
+		if next.Apps[i].Manifest.ID == a.Manifest.ID {
+			next.Apps[i].Disabled = disabled
+		}
+	}
+	defer func() {
+		if err != nil {
+			recovery, cancel := context.WithTimeout(context.Background(), time.Minute)
+			defer cancel()
+			err = errors.Join(err, s.Gateway.Commit(recovery, r), s.Store.Save(r))
+		}
+	}()
+	if err = s.Gateway.Validate(ctx, next); err != nil {
+		return err
+	}
+	if err = s.Gateway.Commit(ctx, next); err != nil {
+		return err
+	}
+	return s.Store.Save(next)
 }
 
 func validAction(action string) bool {
@@ -91,12 +147,12 @@ func (s Service) Recover(ctx context.Context, force, check bool) error {
 		status := s.Adapter.Inspect(ctx, a)
 		fmt.Printf("%s\t%s\t%s\n", a.Manifest.ID, a.Manifest.Startup, status.State)
 		if check {
-			if a.Manifest.Startup == "always" && status.State != "healthy" && a.Manifest.Visibility == "public" {
+			if a.Manifest.Startup == "always" && !a.Disabled && status.State != "healthy" && a.Manifest.Visibility == "public" {
 				failures = append(failures, fmt.Errorf("%s 尚未健康", a.Manifest.ID))
 			}
 			continue
 		}
-		if a.Manifest.Startup != "always" || a.Manifest.Kind == "static" {
+		if a.Manifest.Startup != "always" || a.Manifest.Kind == "static" || a.Disabled {
 			continue
 		}
 		unlock, lockErr := registry.Lock(s.Store.Path("state", "locks", a.Manifest.ID+".lock"))
@@ -164,7 +220,11 @@ func (s Service) Remove(ctx context.Context, id string) error {
 		return err
 	}
 	if a.Manifest.Kind != "static" && a.Manifest.Kind != "external" && a.Manifest.Kind != "external-compose" {
-		if _, err = s.Adapter.Docker.Compose(ctx, a, "down", "--timeout", "30"); err != nil {
+		args := []string{"down", "--timeout", "30"}
+		if a.Managed != nil {
+			args = []string{"down"}
+		}
+		if _, err = s.Adapter.Docker.Compose(ctx, a, args...); err != nil {
 			_ = s.Gateway.Commit(ctx, r)
 			return err
 		}

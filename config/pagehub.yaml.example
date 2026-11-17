@@ -1,0 +1,81 @@
+schema_version: 1
+
+platform:
+  name: PageHub
+  repository: https://github.com/double-cloth-studio/PageHub.git
+  branch: main
+  root: /srv/pagehub
+  source_dir: /srv/pagehub/sources/pagehub
+  public_origin: https://example.com:63445
+  gateway:
+    bind: 127.0.0.1
+    port: 8080
+  admin:
+    bind: 127.0.0.1
+    port: 8091
+  tunnel:
+    provider: sakurafrp
+    mode: external                # 隧道客户端继续由其原有服务管理
+    local_target: 127.0.0.1:8080
+
+update:
+  default_branch: main
+  mode: manual                   # 不自动静默升级 main
+  verify_health: true
+  retain_releases: 3
+  backup_before_update: true
+
+apps:
+  - id: travel-diary
+    name: Travel Diary
+    enabled: true
+    path: /diary/
+    source:
+      type: git
+      repository: https://github.com/double-cloth-studio/travel-diary.git
+      branch: main
+    deployment:
+      driver: managed-compose
+      project: travel-diary
+      compose_files:
+        - compose.yaml
+        - compose.build.yaml
+        - compose.portal.yaml
+      service: app
+      upstream_port: 9000
+      ingress_alias: travel-diary
+      route_mode: strip_prefix
+    settings:
+      TRAVEL_DEPLOYMENT_MODE: portal
+      TRAVEL_BASE_PATH: /diary
+      TRAVEL_PORTAL_NETWORK: pagehub-ingress
+      TRAVEL_PORTAL_ALIAS: travel-diary
+      TRAVEL_WRITE_MODE: local
+      TRAVEL_MEDIA_PREVIEWS_ENABLED: 'true'
+      # PUBLIC_ORIGIN、SITE_DOMAIN、SITE_SCHEME 自动从 platform.public_origin 派生
+    persistence:
+      kind: compose-volume
+      volume: runtime
+      backup_driver: travel-diary-native
+      retain_on_uninstall: true
+    startup: always
+
+  - id: whalgebra
+    name: Whalgebra
+    enabled: true
+    path: /calc/
+    source:
+      type: git
+      repository: https://github.com/double-cloth-studio/Whalgebra.git
+      branch: main
+      sparse_paths:
+        - dist/Whalgebra.html
+    deployment:
+      driver: managed-static
+      publish:
+        source_file: dist/Whalgebra.html
+        target_file: index.html
+      route_mode: strip_prefix
+    persistence:
+      kind: none
+    startup: always

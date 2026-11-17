@@ -63,10 +63,13 @@ export function runAction(
   id: string,
   action: Action,
   token: string,
+  approval?: unknown,
 ): Promise<Job> {
   return request(
     `/admin/api/apps/${encodeURIComponent(id)}/${action}`,
     token,
     "POST",
+    undefined,
+    approval,
   );
 }

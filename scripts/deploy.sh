@@ -6,6 +6,7 @@ version="$(cat "$PAGEHUB_SOURCE/VERSION")"
 release="$PAGEHUB_ROOT/releases/$version-$(date -u +%Y%m%dT%H%M%S)-$$"
 mkdir -p "$release"
 tar -C "$PAGEHUB_SOURCE" --exclude=./.git --exclude=./tmp --exclude=./frontend/node_modules --exclude=./dist --exclude=./images -cf - . | tar -C "$release" -xf -
+python3 "$PAGEHUB_SOURCE/scripts/source-version.py" "$PAGEHUB_SOURCE" "$release/source-version.json"
 [[ -f "$release/frontend/dist/index.html" ]] || { mkdir -p "$release/frontend/dist"; cp -a "$PAGEHUB_SOURCE/frontend/dist/." "$release/frontend/dist/"; }
 chmod +x "$release/bin/"* "$release/"*.sh "$release/scripts/"*.sh
 chown -R root:pagehub "$release"

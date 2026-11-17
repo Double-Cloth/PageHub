@@ -4,6 +4,8 @@ import { gsap } from "gsap";
 import SnakeWorld from "./features/snake/SnakeWorld.vue";
 import ProjectUniverse from "./features/projects/ProjectUniverse.vue";
 import ProjectManager from "./features/admin/ProjectManager.vue";
+import MaintenancePanel from "./features/admin/MaintenancePanel.vue";
+import type { MaintenanceAction } from "./models/app";
 import DanmakuPanel, { type Message } from "./features/social/DanmakuPanel.vue";
 import Icon from "./ui/Icon.vue";
 import { defaultPresentation, type Presentation } from "./models/presentation";
@@ -39,6 +41,7 @@ let dockObserver: ResizeObserver;
 const editor = ref(false);
 const audit = ref<(Job & { created_at?: string; actor?: string })[]>([]);
 const showAudit = ref(false);
+const maintenance = ref<{ app: AppEntry; action: MaintenanceAction }>();
 const loginBusy = ref(false);
 const loginMethod = ref("password");
 const showCatalog = ref(false);
@@ -58,13 +61,13 @@ const inProjects = computed(
 const visibleApps = computed(() => {
   const byId = new Map(apps.value.map((app) => [app.id, app]));
   if (!settings.value.revision)
-    return apps.value.filter((app) => app.offlineReady);
+    return apps.value.filter((app) => app.displayReady ?? app.offlineReady);
   return [...settings.value.projects]
     .sort((a, b) => a.displayOrder - b.displayOrder)
     .filter((project) => project.displayEnabled)
     .flatMap((project) => {
       const app = byId.get(project.appId);
-      return app?.offlineReady
+      return (app?.displayReady ?? app?.offlineReady)
         ? [
             {
               ...app,
@@ -188,6 +191,7 @@ async function login() {
     tokenInput.value = "";
     mode.value = "ADMIN_PROJECTS";
     await refresh(true);
+    if (showAudit.value) await refreshAudit();
   } catch (cause) {
     token.value = "";
     error.value = cause instanceof Error ? cause.message : "连接失败";
@@ -206,11 +210,13 @@ async function logout() {
   tokenInput.value = "";
   mode.value = "ADMIN_AUTH_ENTRY";
   editor.value = false;
+  maintenance.value = undefined;
   void refresh(true);
 }
 
-async function action(app: AppEntry, operation: Action) {
+async function action(app: AppEntry, operation: Action, approval?: unknown) {
   if (
+    !approval &&
     operation !== "start" &&
     !window.confirm(
       `确认${actionLabels[operation]} ${app.name}？当前连接可能中断。`,
@@ -220,10 +226,15 @@ async function action(app: AppEntry, operation: Action) {
   busy.value[app.id] = true;
   error.value = "";
   notice.value = "";
+  let job: Job | undefined;
+  if (operation === "update-self") showAudit.value = true;
   try {
-    let job = await runAction(app.id, operation, token.value);
-    app.state = operation === "stop" ? "stopping" : "starting";
-    const deadline = Date.now() + 210_000;
+    job = await runAction(app.id, operation, token.value, approval);
+    if (operation === "update-self") await refreshAudit();
+    if (operation === "stop") app.state = "stopping";
+    if (operation === "start" || operation === "restart")
+      app.state = "starting";
+    const deadline = Date.now() + (approval ? 31 * 60_000 : 210_000);
     while (job.state === "queued" || job.state === "running") {
       if (disposed) return;
       if (Date.now() > deadline)
@@ -234,8 +245,23 @@ async function action(app: AppEntry, operation: Action) {
     }
     if (job.state === "error") throw new Error(job.error || "任务执行失败");
     notice.value = `${app.name} ${actionLabels[operation]}任务已完成`;
+    if (job.result?.backup)
+      notice.value += ` · 已验证备份 ${job.result.backup}`;
     await refresh();
   } catch (cause) {
+    if (
+      operation === "update-self" &&
+      job?.result?.request_id &&
+      job.state !== "error"
+    ) {
+      error.value = "";
+      token.value = "";
+      tokenInput.value = "";
+      mode.value = "ADMIN_AUTH_ENTRY";
+      notice.value =
+        "平台更新已提交，管理服务重启后请重新登录并查看任务与审计。";
+      return;
+    }
     await refresh();
     error.value = cause instanceof Error ? cause.message : "操作失败";
   } finally {
@@ -243,9 +269,41 @@ async function action(app: AppEntry, operation: Action) {
   }
 }
 
+function submitMaintenance(approval: unknown) {
+  if (!maintenance.value) return;
+  const { app, action: operation } = maintenance.value;
+  maintenance.value = undefined;
+  void action(app, operation, approval);
+}
+
+function beginMaintenance(app: AppEntry, operation: MaintenanceAction) {
+  notice.value = "";
+  error.value = "";
+  maintenance.value = { app, action: operation };
+}
+
+function beginPlatformUpdate() {
+  beginMaintenance(
+    {
+      id: "self",
+      name: "PageHub",
+      path: "/",
+      kind: "compose",
+      startup: "always",
+      state: "unknown",
+      actions: [],
+      managed: true,
+    },
+    "update-self",
+  );
+}
+
 async function loadAudit() {
   showAudit.value = !showAudit.value;
   if (!showAudit.value) return;
+  await refreshAudit();
+}
+async function refreshAudit() {
   try {
     audit.value = await request<Job[]>("/admin/api/audit", token.value);
   } catch (cause) {
@@ -489,6 +547,7 @@ onMounted(() => {
   void refresh();
   timer = setInterval(() => {
     if (!document.hidden && !Object.keys(busy.value).length) void refresh();
+    if (!document.hidden && token.value && showAudit.value) void refreshAudit();
   }, 30_000);
 });
 onUnmounted(() => {
@@ -686,6 +745,13 @@ onUnmounted(() => {
           <p>展示配置与实际运行状态。</p>
         </div>
         <div class="admin-controls">
+          <button
+            class="button"
+            :disabled="busy.self"
+            @click="beginPlatformUpdate"
+          >
+            更新平台
+          </button>
           <button class="button" @click="editor = true">编辑展示</button
           ><button class="button" @click="loadAudit">
             {{ showAudit ? "收起审计" : "任务与审计" }}</button
@@ -694,6 +760,15 @@ onUnmounted(() => {
           ><button class="text-button" @click="logout">退出管理</button>
         </div>
       </header>
+      <MaintenancePanel
+        v-if="maintenance"
+        :key="maintenance.app.id + maintenance.action"
+        :app="maintenance.app"
+        :action="maintenance.action"
+        :token="token"
+        @close="maintenance = undefined"
+        @submit="submitMaintenance"
+      />
       <section v-if="showAudit" class="audit-panel" aria-label="任务与审计">
         <h2>最近任务与审计</h2>
         <ul>
@@ -707,6 +782,17 @@ onUnmounted(() => {
                 ? new Date(job.created_at).toLocaleString("zh-CN")
                 : ""
             }}</time>
+            <span v-if="job.error" class="audit-receipt">{{ job.error }}</span>
+            <code v-if="job.result?.backup" class="audit-receipt"
+              >已验证备份 {{ job.result.backup }}</code
+            >
+            <code v-if="job.commit" class="audit-receipt">{{
+              job.commit
+            }}</code>
+            <details v-if="job.changes?.length" class="audit-details">
+              <summary>计划与版本</summary>
+              <pre>{{ JSON.stringify(job.changes, null, 2) }}</pre>
+            </details>
           </li>
         </ul>
         <p v-if="!audit.length">暂无任务记录。</p>
@@ -732,6 +818,7 @@ onUnmounted(() => {
         :managed="true"
         :busy="busy"
         @action="action"
+        @maintenance="beginMaintenance"
       />
       <p v-if="!filtered.length" class="empty-copy">没有匹配的应用。</p>
     </main>

@@ -13,6 +13,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/double-cloth-studio/PageHub/backend/internal/desired"
 	"github.com/double-cloth-studio/PageHub/backend/internal/manifests"
 )
 
@@ -25,6 +26,27 @@ type Record struct {
 	Previous      *Record            `json:"previous,omitempty"`
 	Adopted       bool               `json:"adopted,omitempty"`
 	StaticRestore string             `json:"static_restore,omitempty"`
+	Managed       *Managed           `json:"managed,omitempty"`
+	Disabled      bool               `json:"disabled,omitempty"`
+	BackupReceipt string             `json:"backup_receipt,omitempty"`
+}
+
+type Managed struct {
+	AssetSHA256   string      `json:"asset_sha256,omitempty"`
+	SourceUnknown bool        `json:"source_unknown,omitempty"`
+	Config        desired.App `json:"config"`
+	Origin        string      `json:"origin"`
+	Commit        string      `json:"commit"`
+	Image         string      `json:"image,omitempty"`
+	RuntimeSHA256 string      `json:"runtime_sha256,omitempty"`
+	ConfigSHA256  string      `json:"config_sha256"`
+}
+
+func (a Record) Allows(action string) bool {
+	if a.Managed != nil && (action == "start" || action == "stop" || action == "restart") {
+		return true
+	}
+	return a.Manifest.Allows(action)
 }
 
 // ContentDirectory 返回当前静态内容目录，旧登记继续使用原版本产物。
@@ -83,6 +105,39 @@ func (s Store) Get(id string) (Record, error) {
 func (s Store) Validate(a Record) error {
 	if err := a.Manifest.Validate(os.Getenv("PAGEHUB_DEV_IMAGES") == "true"); err != nil {
 		return err
+	}
+	if a.Managed != nil {
+		m := a.Managed
+		if err := m.Config.Validate(m.Origin); err != nil {
+			return err
+		}
+		if (!regexp.MustCompile(`^[a-f0-9]{40}$`).MatchString(m.Commit) && !(m.SourceUnknown && m.Commit == "")) || a.Manifest.ID != m.Config.ID || a.Manifest.Path != m.Config.Path {
+			return errors.New("托管版本元数据无效")
+		}
+		if m.Config.Deployment.Driver == "managed-compose" {
+			if !a.Adopted || a.Project != m.Config.Deployment.Project || a.Manifest.Kind != "compose" || !regexp.MustCompile(`^sha256:[a-f0-9]{64}$`).MatchString(m.Image) {
+				return errors.New("托管 Compose 项目或镜像无效")
+			}
+			data, err := os.ReadFile(filepath.Join(a.Directory, "pagehub.runtime.json"))
+			if err != nil {
+				return err
+			}
+			if desired.Digest(json.RawMessage(data)) != m.RuntimeSHA256 {
+				return errors.New("冻结 Compose 配置摘要不匹配")
+			}
+		} else {
+			if a.Manifest.Kind != "static" {
+				return errors.New("托管静态类型无效")
+			}
+			data, err := os.ReadFile(filepath.Join(a.Directory, "dist", m.Config.Deployment.Publish.TargetFile))
+			if err != nil {
+				return err
+			}
+			sum := sha256.Sum256(data)
+			if hex.EncodeToString(sum[:]) != m.AssetSHA256 {
+				return errors.New("托管静态资产摘要不匹配")
+			}
+		}
 	}
 	validProject := a.Project == "pagehub-"+a.Manifest.ID
 	if a.Adopted {

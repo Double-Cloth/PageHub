@@ -119,6 +119,17 @@ func SafeOrigin(r *http.Request) bool {
 	origin := r.Header.Get("Origin")
 	return (origin == "" || origin == scheme+"://"+r.Host) && r.Header.Get("Sec-Fetch-Site") != "cross-site"
 }
+
+func (s *Store) VerifyPassword(file, password, remote string) error {
+	id, _, err := s.Login(file, password, remote)
+	if err != nil {
+		return err
+	}
+	s.mu.Lock()
+	delete(s.sessions, id)
+	s.mu.Unlock()
+	return nil
+}
 func (s *Store) Authorized(r *http.Request) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()

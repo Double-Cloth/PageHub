@@ -1,5 +1,18 @@
 # PageHub
 
+## 单配置部署与统一运维
+
+```bash
+cp config/pagehub.yaml.example pagehub.yaml
+# 修改配置中的公开 HTTPS Origin 与应用路径
+sudo bash install.sh --config ./pagehub.yaml
+sudo pagehub status
+sudo pagehub update --check
+sudo pagehub update --all
+```
+
+安装后维护 `/etc/pagehub/pagehub.yaml`，通过 `pagehub plan/apply` 应用变更。支持 Git SHA 冻结、日记与静态站点托管、原生备份恢复、版本回滚、保留数据卸载和独立平台自更新。完整命令、迁移范围与验收状态见[统一部署说明](docs/UNIFIED_DEPLOYMENT.md)。
+
 ## 部署
 
 ```bash

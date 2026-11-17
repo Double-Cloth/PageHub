@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -77,6 +79,13 @@ func main() {
 		server := &http.Server{Handler: m.Public(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second}
 		log.Fatal(server.Serve(listener))
 	}()
-	server := &http.Server{Addr: "127.0.0.1:8091", Handler: m.Admin(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16384}
+	port := os.Getenv("PAGEHUB_ADMIN_PORT")
+	if port == "" {
+		port = "8091"
+	}
+	if value, err := strconv.Atoi(port); err != nil || value < 1024 || value > 65535 {
+		log.Fatal("管理端口无效")
+	}
+	server := &http.Server{Addr: net.JoinHostPort("127.0.0.1", port), Handler: m.Admin(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16384}
 	log.Fatal(server.ListenAndServe())
 }

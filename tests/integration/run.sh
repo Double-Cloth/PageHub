@@ -29,7 +29,7 @@ PAGEHUB_PUBLIC_ORIGIN="http://127.0.0.1:$PAGEHUB_GATEWAY_PORT" "$PAGEHUB_ROOT/cu
 social_pid=$!
 cleanup() {
   kill "$runner_pid" "$manager_pid" "$social_pid" 2>/dev/null || true
-  for id in static-demo image-demo compose-demo private-demo preserve-demo adopt-demo volume-demo bundled-demo; do runner remove-app "$id" 2>/dev/null || true; done
+  for id in static-demo image-demo compose-demo private-demo preserve-demo adopt-demo volume-demo bundled-demo managed-calc managed-diary; do runner remove-app "$id" 2>/dev/null || true; done
   if [[ -f /tmp/legacy-compose.json ]]; then docker compose -p pagehub-test-legacy -f /tmp/legacy-compose.json down || true; fi
   platform_compose gateway down || true
   platform_compose portal down || true
@@ -37,6 +37,10 @@ cleanup() {
 }
 trap cleanup EXIT
 for attempt in {1..30}; do curl -fsS "http://127.0.0.1:$PAGEHUB_GATEWAY_PORT/healthz" >/dev/null && break; sleep 1; done
+if [[ "${1:-}" == --managed-only ]]; then
+  python3 /workspace/tests/integration/managed_verify.py
+  exit
+fi
 mkdir -p /tmp/pagehub-packages
 python3 - /workspace /tmp/pagehub-packages <<'PY'
 import pathlib, sys, zipfile
@@ -56,6 +60,7 @@ for name in static-site image-web compose-web; do
 done
 python3 /workspace/tests/integration/verify.py
 python3 /workspace/tests/integration/ui_verify.py
+python3 /workspace/tests/integration/managed_verify.py
 kill "$social_pid"
 wait "$social_pid" 2>/dev/null || true
 PAGEHUB_PUBLIC_ORIGIN="http://127.0.0.1:$PAGEHUB_GATEWAY_PORT" "$PAGEHUB_ROOT/current/bin/pagehub-social" &

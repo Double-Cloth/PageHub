@@ -4,6 +4,8 @@ bin/
 /dist/
 /tmp/
 .env
+/pagehub.yaml
+.playwright-cli/
 *.log
 *.exe
 .DS_Store

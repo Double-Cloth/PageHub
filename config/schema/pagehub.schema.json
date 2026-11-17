@@ -1,0 +1,481 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PageHub 声明式部署配置",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "platform": {
+      "$ref": "#/$defs/platform"
+    },
+    "update": {
+      "$ref": "#/$defs/update"
+    },
+    "apps": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/app"
+      }
+    }
+  },
+  "required": [
+    "schema_version",
+    "platform",
+    "apps"
+  ],
+  "$defs": {
+    "endpoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "bind": {
+          "const": "127.0.0.1"
+        },
+        "port": {
+          "type": "integer",
+          "minimum": 1024,
+          "maximum": 65535
+        }
+      },
+      "required": [
+        "bind",
+        "port"
+      ]
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "git"
+        },
+        "repository": {
+          "enum": [
+            "https://github.com/double-cloth-studio/travel-diary.git",
+            "https://github.com/double-cloth-studio/Whalgebra.git"
+          ]
+        },
+        "branch": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._/-]{0,127}$",
+          "default": "main"
+        },
+        "sparse_paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "type",
+        "repository"
+      ]
+    },
+    "deployment": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "driver": {
+          "enum": [
+            "managed-static",
+            "managed-compose"
+          ]
+        },
+        "project": {
+          "type": "string"
+        },
+        "compose_files": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "service": {
+          "type": "string"
+        },
+        "upstream_port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        },
+        "ingress_alias": {
+          "type": "string"
+        },
+        "route_mode": {
+          "const": "strip_prefix"
+        },
+        "publish": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "source_file": {
+              "type": "string"
+            },
+            "target_file": {
+              "type": "string"
+            }
+          },
+          "required": []
+        }
+      },
+      "required": [
+        "driver",
+        "route_mode"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "driver": {
+                "const": "managed-static"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "publish"
+            ],
+            "properties": {
+              "publish": {
+                "required": [
+                  "source_file",
+                  "target_file"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "driver": {
+                "const": "managed-compose"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "project",
+              "compose_files",
+              "service",
+              "upstream_port",
+              "ingress_alias"
+            ],
+            "properties": {
+              "service": {
+                "const": "app"
+              },
+              "upstream_port": {
+                "const": 9000
+              },
+              "compose_files": {
+                "const": [
+                  "compose.yaml",
+                  "compose.build.yaml",
+                  "compose.portal.yaml"
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    "persistence": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "none",
+            "compose-volume"
+          ]
+        },
+        "volume": {
+          "type": "string"
+        },
+        "backup_driver": {
+          "const": "travel-diary-native"
+        },
+        "retain_on_uninstall": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "kind"
+      ]
+    },
+    "settings": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "TRAVEL_DEPLOYMENT_MODE": {
+          "const": "portal"
+        },
+        "TRAVEL_BASE_PATH": {
+          "type": "string"
+        },
+        "TRAVEL_PORTAL_NETWORK": {
+          "const": "pagehub-ingress"
+        },
+        "TRAVEL_PORTAL_ALIAS": {
+          "type": "string"
+        },
+        "TRAVEL_WRITE_MODE": {
+          "enum": [
+            "local",
+            "remote"
+          ]
+        },
+        "TRAVEL_MEDIA_PREVIEWS_ENABLED": {
+          "enum": [
+            "true",
+            "false"
+          ]
+        }
+      },
+      "required": []
+    },
+    "app": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{1,47}$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "path": {
+          "type": "string",
+          "pattern": "^/[a-zA-Z0-9_-]+(?:/[a-zA-Z0-9_-]+)*/$"
+        },
+        "source": {
+          "$ref": "#/$defs/source"
+        },
+        "deployment": {
+          "$ref": "#/$defs/deployment"
+        },
+        "settings": {
+          "$ref": "#/$defs/settings"
+        },
+        "persistence": {
+          "$ref": "#/$defs/persistence"
+        },
+        "startup": {
+          "enum": [
+            "always",
+            "manual"
+          ],
+          "default": "always"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "enabled",
+        "path",
+        "source",
+        "deployment",
+        "persistence"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "deployment": {
+                "properties": {
+                  "driver": {
+                    "const": "managed-compose"
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "source": {
+                "properties": {
+                  "repository": {
+                    "const": "https://github.com/double-cloth-studio/travel-diary.git"
+                  }
+                }
+              },
+              "persistence": {
+                "required": [
+                  "volume",
+                  "backup_driver",
+                  "retain_on_uninstall"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "compose-volume"
+                  },
+                  "volume": {
+                    "const": "runtime"
+                  },
+                  "retain_on_uninstall": {
+                    "const": true
+                  }
+                }
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "source": {
+                "properties": {
+                  "repository": {
+                    "const": "https://github.com/double-cloth-studio/Whalgebra.git"
+                  }
+                }
+              },
+              "persistence": {
+                "properties": {
+                  "kind": {
+                    "const": "none"
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "platform": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "repository": {
+          "const": "https://github.com/double-cloth-studio/PageHub.git"
+        },
+        "branch": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._/-]{0,127}$",
+          "default": "main"
+        },
+        "root": {
+          "type": "string",
+          "pattern": "^/[a-zA-Z0-9/_-]+$"
+        },
+        "source_dir": {
+          "type": "string"
+        },
+        "public_origin": {
+          "type": "string",
+          "pattern": "^https?://[a-zA-Z0-9.\\[\\]:-]+$"
+        },
+        "gateway": {
+          "$ref": "#/$defs/endpoint"
+        },
+        "admin": {
+          "$ref": "#/$defs/endpoint"
+        },
+        "tunnel": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "provider": {
+              "const": "sakurafrp"
+            },
+            "mode": {
+              "const": "external"
+            },
+            "local_target": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "provider",
+            "mode",
+            "local_target"
+          ]
+        }
+      },
+      "required": [
+        "name",
+        "repository",
+        "root",
+        "source_dir",
+        "public_origin",
+        "gateway",
+        "admin",
+        "tunnel"
+      ]
+    },
+    "update": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "default_branch": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._/-]{0,127}$",
+          "default": "main"
+        },
+        "mode": {
+          "const": "manual",
+          "default": "manual"
+        },
+        "verify_health": {
+          "const": true,
+          "default": true
+        },
+        "retain_releases": {
+          "type": "integer",
+          "minimum": 2,
+          "maximum": 100,
+          "default": 3
+        },
+        "backup_before_update": {
+          "const": true,
+          "default": true
+        }
+      },
+      "required": []
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "apps": {
+            "contains": {
+              "properties": {
+                "deployment": {
+                  "properties": {
+                    "driver": {
+                      "const": "managed-compose"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "platform": {
+            "properties": {
+              "public_origin": {
+                "pattern": "^https://"
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

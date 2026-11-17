@@ -28,6 +28,23 @@ func TestOfflineApprovalBoundToCurrentVersion(t *testing.T) {
 		t.Fatal("更新版本继承了旧审核")
 	}
 }
+
+func TestManagedDisplayAdmission(t *testing.T) {
+	store := registry.Store{Root: t.TempDir()}
+	app := registry.Record{Manifest: manifests.Manifest{ID: "managed", Visibility: "public"}, Managed: &registry.Managed{}}
+	if !DisplayReady(store, app) || OfflineReady(store, app) {
+		t.Fatal("托管公开登记的展示准入状态无效")
+	}
+	app.Disabled = true
+	if DisplayReady(store, app) {
+		t.Fatal("已停用路由仍进入展示目录")
+	}
+	app.Disabled = false
+	app.Manifest.Visibility = "private"
+	if DisplayReady(store, app) {
+		t.Fatal("私有托管应用被公开展示")
+	}
+}
 func TestSettingsRevisionConflict(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("沿用平台 Linux flock 互斥")

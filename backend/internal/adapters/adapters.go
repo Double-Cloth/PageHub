@@ -18,16 +18,19 @@ import (
 )
 
 type Status struct {
+	Image   string `json:"-"`
 	ID      string `json:"id"`
 	State   string `json:"state"`
 	Message string `json:"message,omitempty"`
-	Running bool   `json:"-"`
+	Running bool   `json:"running"`
 }
 
 type ExecutionPlan struct {
-	ID          string `json:"id"`
-	Action      string `json:"action"`
-	Fingerprint string `json:"fingerprint"`
+	Backup       string `json:"backup,omitempty"`
+	ApprovedPlan string `json:"approved_plan_sha256,omitempty"`
+	ID           string `json:"id"`
+	Action       string `json:"action"`
+	Fingerprint  string `json:"fingerprint"`
 }
 
 type Adapter interface {
@@ -46,7 +49,7 @@ type Builtin struct {
 }
 
 func (b Builtin) Plan(a registry.Record, action string) (ExecutionPlan, error) {
-	if !a.Manifest.Allows(action) {
+	if !a.Allows(action) {
 		return ExecutionPlan{}, errors.New("应用未授权此生命周期操作")
 	}
 	return ExecutionPlan{ID: a.Manifest.ID, Action: action, Fingerprint: registry.Fingerprint(a)}, nil
@@ -263,6 +266,11 @@ func CheckResolved(config map[string]any, dir, project string, dev bool) error {
 }
 
 func (b Builtin) Start(ctx context.Context, a registry.Record) error {
+	if a.Managed != nil && a.Manifest.Kind == "compose" {
+		if _, err := b.Docker.Run(ctx, "", "volume", "inspect", a.Project+"_runtime"); err != nil {
+			return errors.New("托管 runtime 卷缺失，拒绝创建空卷替代，请检查备份恢复")
+		}
+	}
 	if a.Manifest.Kind == "external-compose" {
 		return b.externalComposeAction(ctx, a, "start")
 	}
@@ -286,11 +294,18 @@ func (b Builtin) Stop(ctx context.Context, a registry.Record) error {
 	if a.Manifest.Kind == "static" {
 		return errors.New("静态应用通过网关托管，无独立容器")
 	}
-	_, err := b.Docker.Compose(ctx, a, "stop", "--timeout", "30")
+	args := []string{"stop", "--timeout", "30"}
+	if a.Managed != nil {
+		args = []string{"stop"}
+	}
+	_, err := b.Docker.Compose(ctx, a, args...)
 	return err
 }
 
 func (b Builtin) Inspect(ctx context.Context, a registry.Record) Status {
+	if a.Manifest.Kind == "static" && a.Disabled {
+		return Status{ID: a.Manifest.ID, State: "stopped", Message: "公开路由已禁用"}
+	}
 	status := Status{ID: a.Manifest.ID, State: "unknown"}
 	if a.Manifest.Kind == "external" {
 		return b.Probe(ctx, a)
@@ -324,9 +339,13 @@ func (b Builtin) Inspect(ctx context.Context, a registry.Record) Status {
 		return status
 	}
 	status = containerStatus(a.Manifest.ID, items)
+	if a.Managed != nil {
+		status = b.inspectManaged(ctx, a, status, items)
+	}
 	if status.State == "running" {
 		probed := b.Probe(ctx, a)
 		probed.Running = true
+		probed.Image = status.Image
 		return probed
 	}
 	return status
