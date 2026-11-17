@@ -64,7 +64,7 @@ func TestSettingsRevisionConflict(t *testing.T) {
 	if _, err = Save(store, first); !errors.Is(err, ErrConflict) {
 		t.Fatalf("未拒绝并发覆盖 %v", err)
 	}
-	saved.Profile.AvatarPath = "https://remote/avatar.png"
+	saved.Profile.AvatarPath = "https://remote/avatar.webp"
 	if _, err = Save(store, saved); err == nil {
 		t.Fatal("接受了外部必要资源")
 	}

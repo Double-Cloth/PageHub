@@ -26,7 +26,7 @@ export const defaultPresentation: Presentation = {
   profile: {
     name: "Double Cloth",
     signature: "Build. Explore. Create.",
-    avatarPath: "/assets/avatar.png",
+    avatarPath: "/assets/avatar.webp",
     githubUrl: "https://github.com/double-cloth-studio",
   },
   projects: [],

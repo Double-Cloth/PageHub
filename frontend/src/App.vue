@@ -606,7 +606,7 @@ onUnmounted(() => {
             height="100"
             :alt="`${settings.profile.name} 的头像`"
             @error="
-              ($event.target as HTMLImageElement).src = '/assets/avatar.png'
+              ($event.target as HTMLImageElement).src = '/assets/avatar.webp'
             "
           />
         </button>
